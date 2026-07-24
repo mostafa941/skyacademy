@@ -22,10 +22,12 @@ interface SidebarItem {
 const sidebarConfig: Record<string, SidebarItem[]> = {
   admin: [
     { id: 'overview', label: 'لوحة التحكم', icon: '📊' },
+    { id: 'income', label: 'الدخل', icon: '💵' },
+    { id: 'expenses', label: 'الخرج', icon: '📤' },
     { id: 'students', label: 'الطلاب', icon: '🎓' },
     { id: 'teachers', label: 'المدرسين', icon: '👨‍🏫' },
     { id: 'secretaries', label: 'السكرتارية', icon: '💼' },
-    { id: 'payments', label: 'المصاريف', icon: '💰' },
+    { id: 'payments', label: 'مصاريف الطلاب', icon: '💰' },
     { id: 'attendance', label: 'الحضور والغياب', icon: '📅' },
     { id: 'evaluations', label: 'التقييمات', icon: '⭐' },
   ],
@@ -178,15 +180,15 @@ export default function DashboardLayout({ children, role }: { children: React.Re
         </div>
 
         {/* Content */}
-        <DashboardContent role={role} section={activeSection} user={user} />
+        <DashboardContent role={role} section={activeSection} user={user} onSectionChange={setActiveSection} />
       </main>
     </div>
   );
 }
 
 // ============= DASHBOARD CONTENT ================
-function DashboardContent({ role, section, user }: { role: string; section: string; user: User }) {
-  if (role === 'admin') return <AdminContent section={section} />;
+function DashboardContent({ role, section, user, onSectionChange }: { role: string; section: string; user: User; onSectionChange?: (section: string) => void }) {
+  if (role === 'admin') return <AdminContent section={section} onSectionChange={onSectionChange} />;
   if (role === 'teacher') return <TeacherContent section={section} user={user} />;
   if (role === 'secretary') return <SecretaryContent section={section} />;
   if (role === 'student') return <StudentContent section={section} user={user} />;
@@ -194,7 +196,7 @@ function DashboardContent({ role, section, user }: { role: string; section: stri
 }
 
 // ============= ADMIN DASHBOARD ==================
-function AdminContent({ section }: { section: string }) {
+function AdminContent({ section, onSectionChange }: { section: string; onSectionChange?: (section: string) => void }) {
   const [stats, setStats] = useState<any>(null);
   const [students, setStudents] = useState<any[]>([]);
   const [teachers, setTeachers] = useState<any[]>([]);
@@ -204,6 +206,7 @@ function AdminContent({ section }: { section: string }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (section === 'income' || section === 'expenses') return;
     const load = async () => {
       setLoading(true);
       try {
@@ -243,9 +246,12 @@ function AdminContent({ section }: { section: string }) {
     load();
   }, [section]);
 
+  if (section === 'income') return <IncomeSection />;
+  if (section === 'expenses') return <ExpensesSection />;
+
   if (loading) return <LoadingState />;
 
-  if (section === 'overview') return <AdminOverview stats={stats} />;
+  if (section === 'overview') return <AdminOverview stats={stats} onNavigate={onSectionChange} />;
   if (section === 'students') return <StudentsTable students={students} showAll />;
   if (section === 'teachers') return <TeachersTable teachers={teachers} />;
   if (section === 'secretaries') return <SecretariesTable secretaries={teachers} />;
@@ -255,15 +261,51 @@ function AdminContent({ section }: { section: string }) {
   return null;
 }
 
-function AdminOverview({ stats }: { stats: any }) {
+function AdminOverview({ stats, onNavigate }: { stats: any; onNavigate?: (section: string) => void }) {
   if (!stats) return <LoadingState />;
-  const { stats: s, recentEvaluations = [], recentStudents = [] } = stats;
+  const { stats: s, recentEvaluations = [], recentExpenses = [] } = stats;
+  const f = s.finance || {};
   return (
     <div>
       <div className="page-header">
         <div>
           <h1 className="page-title">لوحة التحكم الرئيسية</h1>
           <p className="page-subtitle">نظرة عامة على أكاديمية اسكاي</p>
+        </div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" onClick={() => onNavigate?.('income')}>💵 الدخل</button>
+          <button className="btn btn-secondary" onClick={() => onNavigate?.('expenses')}>📤 تسجيل خرج</button>
+        </div>
+      </div>
+
+      {/* الحسابات المالية */}
+      <div className="card" style={{ marginBottom: 32, border: '1px solid var(--accent-orange)', background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--accent-orange-muted) 100%)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
+          <h3 style={{ fontWeight: 800, fontSize: 17 }}>💰 الحسابات المالية</h3>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => onNavigate?.('income')}>تفاصيل الدخل ←</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => onNavigate?.('expenses')}>تفاصيل الخرج ←</button>
+          </div>
+        </div>
+
+        <div className="grid-4" style={{ marginBottom: 20 }}>
+          <StatCard icon="💵" label="إجمالي الدخل" value={`${formatMoney(f.totalIncome || 0)} جنيه`} colorClass="stat-card-green" isText />
+          <StatCard icon="📤" label="إجمالي الخرج" value={`${formatMoney(f.totalExpenses || 0)} جنieh`} colorClass="stat-card-red" isText />
+          <StatCard icon="📈" label="صافي الربح" value={`${formatMoney(f.netProfit || 0)} جنيه`} colorClass="stat-card-gold" isText />
+          <StatCard icon="📊" label={`صافي ${f.month || ''}`} value={`${formatMoney(f.netMonth || 0)} جنيه`} colorClass="stat-card-blue" isText />
+        </div>
+
+        <div className="grid-2">
+          <div style={{ background: 'var(--success-muted)', borderRadius: 'var(--radius-md)', padding: 20 }}>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>☀️ دخل اليوم</div>
+            <div style={{ fontSize: 32, fontWeight: 900, color: 'var(--success)' }}>{formatMoney(f.todayIncome || 0)} جنيه</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{f.todayIncomeCount || 0} فاتورة اليوم</div>
+          </div>
+          <div style={{ background: 'var(--error-muted)', borderRadius: 'var(--radius-md)', padding: 20 }}>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>☀️ خرج اليوم</div>
+            <div style={{ fontSize: 32, fontWeight: 900, color: 'var(--error)' }}>{formatMoney(f.todayExpenses || 0)} جنيه</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{f.todayExpenseCount || 0} مصروف اليوم</div>
+          </div>
         </div>
       </div>
 
@@ -273,6 +315,15 @@ function AdminOverview({ stats }: { stats: any }) {
         <StatCard icon="💼" label="السكرتارية" value={s.totalSecretaries} colorClass="stat-card-blue" />
         <StatCard icon="📚" label="المواد الدراسية" value={s.totalSubjects} colorClass="stat-card-gold" />
       </div>
+
+      {s.finance && (
+        <div className="grid-4" style={{ marginBottom: 32 }}>
+          <StatCard icon="💵" label="إجمالي الدخل" value={`${formatMoney(s.finance.totalIncome)} جنيه`} colorClass="stat-card-green" isText />
+          <StatCard icon="📤" label="إجمالي الخرج" value={`${formatMoney(s.finance.totalExpenses)} جنيه`} colorClass="stat-card-red" isText />
+          <StatCard icon="📈" label="صافي الربح" value={`${formatMoney(s.finance.netProfit)} جنيه`} colorClass="stat-card-gold" isText />
+          <StatCard icon="📅" label={`دخل ${s.finance.month}`} value={`${formatMoney(s.finance.monthIncome)} جنيه`} colorClass="stat-card-blue" isText />
+        </div>
+      )}
 
       <div className="grid-2" style={{ marginBottom: 32 }}>
         <div className="card">
@@ -323,6 +374,371 @@ function AdminOverview({ stats }: { stats: any }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function IncomeSection() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().substring(0, 10));
+
+  const load = useCallback(async (date: string) => {
+    setLoading(true);
+    try {
+      const r = await fetch(`/api/finance/income?date=${date}`);
+      const d = await r.json();
+      setData(d);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load(selectedDate);
+  }, [selectedDate, load]);
+
+  if (loading && !data) return <LoadingState />;
+
+  const stats = data?.stats;
+  const invoices = data?.invoices || [];
+  const dailyBreakdown = stats?.dailyBreakdown || [];
+
+  return (
+    <div>
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">💵 الدخل</h1>
+          <p className="page-subtitle">إجمالي الدخل وفواتير الدفع اليومية</p>
+        </div>
+      </div>
+
+      {stats && (
+        <div className="grid-4" style={{ marginBottom: 32 }}>
+          <StatCard icon="💰" label="إجمالي الدخل" value={`${formatMoney(stats.totalAllTime)} جنيه`} colorClass="stat-card-green" isText />
+          <StatCard icon="📅" label={`دخل ${stats.month}`} value={`${formatMoney(stats.totalThisMonth)} جنيه`} colorClass="stat-card-blue" isText />
+          <StatCard icon="☀️" label="دخل اليوم" value={`${formatMoney(stats.totalToday)} جنيه`} colorClass="stat-card-orange" isText />
+          <StatCard icon="📈" label="صافي الربح" value={`${formatMoney(stats.netAllTime)} جنيه`} colorClass="stat-card-gold" isText />
+        </div>
+      )}
+
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
+          <div>
+            <h3 style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>🧾 فواتير الدخل اليومية</h3>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+              {data?.dayCount || 0} فاتورة — إجمالي {formatMoney(data?.dayTotal || 0)} جنيه
+            </p>
+          </div>
+          <div className="input-group" style={{ marginBottom: 0, minWidth: 200 }}>
+            <label className="input-label">اختر التاريخ</label>
+            <input
+              className="input"
+              type="date"
+              value={selectedDate}
+              onChange={e => setSelectedDate(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {invoices.length === 0 ? (
+          <div className="empty-state" style={{ padding: '32px 0' }}>
+            <div className="empty-state-icon">🧾</div>
+            <p className="empty-state-text">لا يوجد دخل مسجل في هذا اليوم</p>
+          </div>
+        ) : (
+          <div className="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>الطالب</th>
+                  <th>الصف</th>
+                  <th>الشهر</th>
+                  <th>المبلغ</th>
+                  <th>وقت الدفع</th>
+                  <th>ملاحظات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invoices.map((inv: any, i: number) => (
+                  <tr key={i}>
+                    <td style={{ fontWeight: 600 }}>{inv.student?.name || '—'}</td>
+                    <td><span className="badge badge-info">{inv.student?.grade || '—'}</span></td>
+                    <td>{inv.month}</td>
+                    <td style={{ fontWeight: 700, color: 'var(--success)' }}>{formatMoney(inv.amount)} جنيه</td>
+                    <td style={{ color: 'var(--text-muted)' }}>
+                      {inv.paidAt ? new Date(inv.paidAt).toLocaleString('ar-EG') : '—'}
+                    </td>
+                    <td style={{ color: 'var(--text-secondary)' }}>{inv.notes || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {dailyBreakdown.length > 0 && (
+        <div className="card">
+          <h3 style={{ fontWeight: 700, marginBottom: 16, fontSize: 15 }}>📊 ملخص الدخل اليومي (آخر 30 يوم)</h3>
+          <div className="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>التاريخ</th>
+                  <th>عدد الفواتير</th>
+                  <th>إجمالي الدخل</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {dailyBreakdown.map((day: any) => (
+                  <tr key={day.date}>
+                    <td>{new Date(day.date).toLocaleDateString('ar-EG')}</td>
+                    <td>{day.count} فاتورة</td>
+                    <td style={{ fontWeight: 700, color: 'var(--success)' }}>{formatMoney(day.total)} جنيه</td>
+                    <td>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setSelectedDate(day.date)}
+                      >
+                        عرض
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExpensesSection() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const [form, setForm] = useState({
+    amount: 0,
+    date: new Date().toISOString().substring(0, 10),
+    reason: '',
+  });
+
+  const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch('/api/expenses');
+      const d = await r.json();
+      setData(d);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const addExpense = async () => {
+    if (!form.amount || form.amount <= 0) {
+      showToast('أدخل مبلغاً صحيحاً', 'error');
+      return;
+    }
+    if (!form.reason.trim()) {
+      showToast('أدخل سبب المصروف', 'error');
+      return;
+    }
+    setSaving(true);
+    const res = await fetch('/api/expenses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form),
+    });
+    setSaving(false);
+    if (res.ok) {
+      showToast('✅ تم تسجيل المصروف');
+      setShowModal(false);
+      setForm({ amount: 0, date: new Date().toISOString().substring(0, 10), reason: '' });
+      load();
+    } else {
+      const d = await res.json();
+      showToast('❌ ' + d.error, 'error');
+    }
+  };
+
+  const deleteExpense = async (id: string) => {
+    if (!confirm('هل تريد حذف هذا المصروف؟')) return;
+    const res = await fetch(`/api/expenses?id=${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      showToast('✅ تم حذف المصروف');
+      load();
+    } else {
+      const d = await res.json();
+      showToast('❌ ' + d.error, 'error');
+    }
+  };
+
+  if (loading && !data) return <LoadingState />;
+
+  const expenses = data?.expenses || [];
+  const stats = data?.stats;
+  const dailyBreakdown = stats?.dailyBreakdown || [];
+
+  return (
+    <div>
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">📤 الخرج والمصروفات</h1>
+          <p className="page-subtitle">تسجيل ومتابعة مصروفات الأكاديمية</p>
+        </div>
+        <button className="btn btn-primary" onClick={() => setShowModal(true)}>+ تسجيل خرج</button>
+      </div>
+
+      {stats && (
+        <div className="grid-4" style={{ marginBottom: 32 }}>
+          <StatCard icon="📤" label="إجمالي الخرج" value={`${formatMoney(stats.totalAllTime)} جنيه`} colorClass="stat-card-red" isText />
+          <StatCard icon="📅" label={`خرج ${stats.month}`} value={`${formatMoney(stats.totalThisMonth)} جنيه`} colorClass="stat-card-orange" isText />
+          <StatCard icon="☀️" label="خرج اليوم" value={`${formatMoney(stats.totalToday)} جنيه`} colorClass="stat-card-blue" isText />
+          <StatCard icon="🧾" label="عدد المصروفات" value={stats.countAllTime} colorClass="stat-card-gold" />
+        </div>
+      )}
+
+      {expenses.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-state-icon">📤</div>
+          <p className="empty-state-text">لا يوجد مصروفات مسجلة بعد</p>
+          <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => setShowModal(true)}>+ تسجيل أول مصروف</button>
+        </div>
+      ) : (
+        <div className="table-wrapper" style={{ marginBottom: 24 }}>
+          <table>
+            <thead>
+              <tr>
+                <th>التاريخ</th>
+                <th>السبب</th>
+                <th>المبلغ</th>
+                <th>سجّله</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {expenses.map((exp: any) => (
+                <tr key={exp._id}>
+                  <td>{new Date(exp.date).toLocaleDateString('ar-EG')}</td>
+                  <td style={{ fontWeight: 600 }}>{exp.reason}</td>
+                  <td style={{ fontWeight: 700, color: 'var(--error)' }}>{formatMoney(exp.amount)} جنيه</td>
+                  <td style={{ color: 'var(--text-muted)' }}>{exp.createdBy?.name || '—'}</td>
+                  <td>
+                    <button className="btn btn-ghost btn-sm" style={{ color: 'var(--error)' }} onClick={() => deleteExpense(exp._id)}>
+                      🗑️ حذف
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {dailyBreakdown.length > 0 && (
+        <div className="card">
+          <h3 style={{ fontWeight: 700, marginBottom: 16, fontSize: 15 }}>📊 ملخص الخرج اليومي (آخر 30 يوم)</h3>
+          <div className="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>التاريخ</th>
+                  <th>عدد المصروفات</th>
+                  <th>إجمالي الخرج</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dailyBreakdown.map((day: any) => (
+                  <tr key={day.date}>
+                    <td>{new Date(day.date).toLocaleDateString('ar-EG')}</td>
+                    <td>{day.count}</td>
+                    <td style={{ fontWeight: 700, color: 'var(--error)' }}>{formatMoney(day.total)} جنيه</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {showModal && (
+        <div className="modal-backdrop" onClick={() => setShowModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 20 }}>📤 تسجيل خرج / مصروف</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div className="input-group">
+                <label className="input-label">المبلغ (جنيه) *</label>
+                <input
+                  className="input"
+                  type="number"
+                  min={1}
+                  placeholder="مثال: 500"
+                  value={form.amount || ''}
+                  onChange={e => setForm(f => ({ ...f, amount: +e.target.value }))}
+                />
+              </div>
+              <div className="input-group">
+                <label className="input-label">التاريخ *</label>
+                <input
+                  className="input"
+                  type="date"
+                  value={form.date}
+                  onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                />
+              </div>
+              <div className="input-group">
+                <label className="input-label">السبب *</label>
+                <input
+                  className="input"
+                  placeholder="مثال: كهرباء، مياه، سلفة..."
+                  value={form.reason}
+                  onChange={e => setForm(f => ({ ...f, reason: e.target.value }))}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {['كهرباء', 'مياه', 'إيجار', 'سلفة', 'صيانة', 'أخرى'].map(tag => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, reason: tag }))}
+                    style={{
+                      padding: '6px 14px', borderRadius: 100, border: '1px solid var(--border)',
+                      cursor: 'pointer', fontSize: 13, fontFamily: 'Cairo', fontWeight: 600,
+                      background: form.reason === tag ? 'var(--accent-orange)' : 'var(--bg-elevated)',
+                      borderColor: form.reason === tag ? 'var(--accent-orange)' : 'var(--border)',
+                      color: form.reason === tag ? '#fff' : 'var(--text-secondary)',
+                    }}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+                <button className="btn btn-primary" onClick={addExpense} disabled={saving} style={{ flex: 1 }}>
+                  {saving ? <span className="spinner" style={{ width: 18, height: 18 }} /> : '✅ حفظ المصروف'}
+                </button>
+                <button className="btn btn-ghost" onClick={() => setShowModal(false)}>إلغاء</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && <div className={`toast toast-${toast.type === 'success' ? 'success' : 'error'}`}>{toast.msg}</div>}
     </div>
   );
 }
@@ -952,6 +1368,10 @@ function StudentContent({ section, user }: { section: string; user: User }) {
 }
 
 // ============= SHARED COMPONENTS ==================
+function formatMoney(amount: number) {
+  return amount.toLocaleString('ar-EG');
+}
+
 function StatCard({ icon, label, value, colorClass, isText }: {
   icon: string; label: string; value: any; colorClass: string; isText?: boolean;
 }) {
