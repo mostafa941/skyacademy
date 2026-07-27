@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db';
 import Expense from '@/models/Expense';
+import Teacher from '@/models/Teacher';
 import { getCurrentUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -9,10 +10,8 @@ async function getExpenseStats() {
   const today = new Date().toISOString().substring(0, 10);
   const currentMonth = new Date().toISOString().substring(0, 7);
 
-  const [allTime, thisMonth, todayStats, dailyBreakdown] = await Promise.all([
-    Expense.aggregate([
-      { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
-    ]),
+  const [allTime, thisMonth, todayStats] = await Promise.all([
+    Expense.aggregate([{ $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } }]),
     Expense.aggregate([
       { $match: { date: { $regex: `^${currentMonth}` } } },
       { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
@@ -20,11 +19,6 @@ async function getExpenseStats() {
     Expense.aggregate([
       { $match: { date: today } },
       { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
-    ]),
-    Expense.aggregate([
-      { $group: { _id: '$date', total: { $sum: '$amount' }, count: { $sum: 1 } } },
-      { $sort: { _id: -1 } },
-      { $limit: 30 },
     ]),
   ]);
 
@@ -37,19 +31,14 @@ async function getExpenseStats() {
     countToday: todayStats[0]?.count || 0,
     month: currentMonth,
     today,
-    dailyBreakdown: dailyBreakdown.map((d: { _id: string; total: number; count: number }) => ({
-      date: d._id,
-      total: d.total,
-      count: d.count,
-    })),
   };
 }
 
 export async function GET(req: NextRequest) {
   try {
     const currentUser = await getCurrentUser(req);
-    if (!currentUser || currentUser.role !== 'admin') {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
+    if (!currentUser) {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
     await connectToDatabase();
 
@@ -65,7 +54,7 @@ export async function GET(req: NextRequest) {
     }
 
     const [expenses, stats] = await Promise.all([
-      Expense.find(query).populate('createdBy', 'name').sort({ date: -1, createdAt: -1 }),
+      Expense.find(query).populate('createdBy', 'name').populate('teacher', 'name type subjectName').sort({ date: -1, createdAt: -1 }),
       getExpenseStats(),
     ]);
 
@@ -79,13 +68,13 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const currentUser = await getCurrentUser(req);
-    if (!currentUser || currentUser.role !== 'admin') {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
+    if (!currentUser) {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
     await connectToDatabase();
 
     const body = await req.json();
-    const { amount, date, reason } = body;
+    const { amount, date, reason, type, teacherId } = body;
 
     if (!amount || amount <= 0) {
       return NextResponse.json({ error: 'المبلغ مطلوب ويجب أن يكون أكبر من صفر' }, { status: 400 });
@@ -98,11 +87,20 @@ export async function POST(req: NextRequest) {
     }
 
     const expense = await Expense.create({
-      amount,
+      amount: Number(amount),
       date,
       reason: reason.trim(),
+      type: type === 'teacher_loan' ? 'teacher_loan' : 'general',
+      teacher: teacherId || undefined,
       createdBy: currentUser._id,
     });
+
+    // If teacher loan, update teacher balance (subtract from teacher balance since they borrowed)
+    if (type === 'teacher_loan' && teacherId) {
+      await Teacher.findByIdAndUpdate(teacherId, {
+        $inc: { balance: -Number(amount) },
+      });
+    }
 
     return NextResponse.json({ success: true, expense });
   } catch (error: unknown) {
@@ -115,7 +113,7 @@ export async function DELETE(req: NextRequest) {
   try {
     const currentUser = await getCurrentUser(req);
     if (!currentUser || currentUser.role !== 'admin') {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
+      return NextResponse.json({ error: 'حذف المصروفات متاح للأدمن فقط' }, { status: 403 });
     }
     await connectToDatabase();
 
@@ -123,6 +121,14 @@ export async function DELETE(req: NextRequest) {
     const expenseId = searchParams.get('id');
     if (!expenseId) {
       return NextResponse.json({ error: 'معرف المصروف مطلوب' }, { status: 400 });
+    }
+
+    const expense = await Expense.findById(expenseId);
+    if (expense && expense.type === 'teacher_loan' && expense.teacher) {
+      // Reverse balance change if deleted
+      await Teacher.findByIdAndUpdate(expense.teacher, {
+        $inc: { balance: Number(expense.amount) },
+      });
     }
 
     await Expense.findByIdAndDelete(expenseId);

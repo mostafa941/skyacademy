@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db';
-import Attendance from '@/models/Attendance';
+import TeacherAttendance from '@/models/TeacherAttendance';
 import { getCurrentUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -12,17 +12,15 @@ export async function GET(req: NextRequest) {
     await connectToDatabase();
 
     const { searchParams } = new URL(req.url);
-    const studentId = searchParams.get('studentId');
+    const teacherId = searchParams.get('teacherId');
     const date = searchParams.get('date');
 
     let query: any = {};
-    if (studentId) {
-      query.student = studentId;
-    }
+    if (teacherId) query.teacher = teacherId;
     if (date) query.date = date;
 
-    const attendance = await Attendance.find(query)
-      .populate('student', 'name phone parentPhone grade subjectName')
+    const attendance = await TeacherAttendance.find(query)
+      .populate('teacher', 'name phone type subjectName')
       .sort({ date: -1 });
 
     return NextResponse.json({ attendance });
@@ -34,20 +32,19 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const currentUser = await getCurrentUser(req);
-    if (!currentUser) {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
-    }
+    if (!currentUser) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     await connectToDatabase();
-    const body = await req.json();
-    const { studentId, subjectName, date, status, notes } = body;
 
-    if (!studentId || !date || !status) {
+    const body = await req.json();
+    const { teacherId, date, status, notes } = body;
+
+    if (!teacherId || !date || !status) {
       return NextResponse.json({ error: 'بيانات الحضور ناقصة' }, { status: 400 });
     }
 
-    const record = await Attendance.findOneAndUpdate(
-      { student: studentId, date },
-      { student: studentId, subjectName: subjectName || undefined, date, status, notes: notes?.trim() },
+    const record = await TeacherAttendance.findOneAndUpdate(
+      { teacher: teacherId, date },
+      { teacher: teacherId, date, status, notes: notes?.trim() },
       { upsert: true, new: true }
     );
 

@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db';
-import User from '@/models/User';
-import Subject from '@/models/Subject';
-import Enrollment from '@/models/Enrollment';
+import Student from '@/models/Student';
 import Payment from '@/models/Payment';
 import Attendance from '@/models/Attendance';
-import Evaluation from '@/models/Evaluation';
+import Teacher from '@/models/Teacher';
 import { getCurrentUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -14,95 +12,65 @@ export async function GET(req: NextRequest) {
   try {
     const currentUser = await getCurrentUser(req);
     if (!currentUser) {
-      return NextResponse.json({ error: 'غير مصرح بالوصول' }, { status: 401 });
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
-
     await connectToDatabase();
 
-    const currentMonth = new Date().toISOString().substring(0, 7); // YYYY-MM
+    const { searchParams } = new URL(req.url);
+    const search = searchParams.get('search');
 
-    if (currentUser.role === 'student') {
-      // Return student's detailed info
-      const enrollments = await Enrollment.find({ student: currentUser._id }).populate('subject');
-      const payments = await Payment.find({ student: currentUser._id }).sort({ month: -1 });
-      const attendance = await Attendance.find({ student: currentUser._id }).sort({ date: -1 });
-      const evaluations = await Evaluation.find({ student: currentUser._id }).populate('teacher', 'name subjectName');
-
-      return NextResponse.json({
-        student: {
-          id: currentUser._id.toString(),
-          name: currentUser.name,
-          phone: currentUser.phone,
-          grade: currentUser.grade,
-        },
-        enrollments,
-        payments,
-        attendance,
-        evaluations,
-      });
+    let query: any = {};
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { phone: { $regex: search, $options: 'i' } },
+        { parentPhone: { $regex: search, $options: 'i' } },
+        { subjectName: { $regex: search, $options: 'i' } },
+      ];
     }
 
-    let studentQuery: any = { role: 'student' };
+    const students = await Student.find(query).populate('teacher').sort({ createdAt: -1 });
+    const currentMonth = new Date().toISOString().substring(0, 7);
 
-    // If teacher, find students enrolled in teacher's subjects
-    if (currentUser.role === 'teacher') {
-      const teacherSubjects = await Subject.find({
-        $or: [{ teacher: currentUser._id }, { name: currentUser.subjectName }],
-      });
-      const subjectIds = teacherSubjects.map((s) => s._id);
-
-      const enrollments = await Enrollment.find({ subject: { $in: subjectIds } });
-      const studentIds = enrollments.map((e) => e.student);
-
-      studentQuery = { _id: { $in: studentIds }, role: 'student' };
-    }
-
-    const students = await User.find(studentQuery).sort({ createdAt: -1 });
-
-    // Fetch related statistics for each student
-    const studentListWithDetails = await Promise.all(
+    // Populate payment status & attendance for each student
+    const studentList = await Promise.all(
       students.map(async (st) => {
-        const enrollments = await Enrollment.find({ student: st._id }).populate('subject');
-        const currentPayment = await Payment.findOne({ student: st._id, month: currentMonth });
-        const attendanceRecords = await Attendance.find({ student: st._id });
-        const evaluations = await Evaluation.find({ student: st._id }).populate('teacher', 'name subjectName');
+        const [payment, attendances] = await Promise.all([
+          Payment.findOne({ student: st._id, month: currentMonth }),
+          Attendance.find({ student: st._id }),
+        ]);
 
-        const totalAtt = attendanceRecords.length;
-        const presentAtt = attendanceRecords.filter((a) => a.status === 'present').length;
-        const attendanceRate = totalAtt > 0 ? Math.round((presentAtt / totalAtt) * 100) : 100;
+        const totalAtt = attendances.length;
+        const presentAtt = attendances.filter((a) => a.status === 'present').length;
+        const absentAtt = attendances.filter((a) => a.status === 'absent').length;
 
         return {
           id: st._id.toString(),
           name: st.name,
           phone: st.phone,
-          grade: st.grade || 'غير محدد',
-          createdAt: st.createdAt,
-          subjects: enrollments.map((e: any) => ({
-            id: e.subject?._id?.toString(),
-            name: e.subject?.name || 'مادة متخصصة',
-            score: e.score,
-            maxScore: e.maxScore,
-            teacherName: e.subject?.teacherName || 'مدرس المادة',
-          })),
-          paymentStatus: currentPayment ? currentPayment.status : 'unpaid',
-          paymentAmount: currentPayment ? currentPayment.amount : 0,
-          attendanceRate,
+          parentPhone: st.parentPhone,
+          subjectName: st.subjectName,
+          teacherId: (st.teacher as any)?._id?.toString() || '',
+          teacherName: (st.teacher as any)?.name || 'غير محدد',
+          grade: st.grade,
+          monthlyFee: st.monthlyFee,
+          notes: st.notes || '',
+          grades: st.grades || [],
+          paymentStatus: payment ? payment.status : 'unpaid',
+          paymentAmount: payment ? payment.amount : 0,
+          paymentReason: payment ? payment.paymentReason : '',
+          remainingAmount: payment ? payment.remainingAmount : 0,
+          remainingReason: payment ? payment.remainingReason : '',
           totalAttendance: totalAtt,
-          absentCount: totalAtt - presentAtt,
-          evaluations: evaluations.map((ev: any) => ({
-            id: ev._id.toString(),
-            teacherName: ev.teacher?.name || 'مدرس الأكاديمية',
-            rating: ev.rating,
-            notes: ev.notes,
-            date: ev.createdAt,
-          })),
+          presentCount: presentAtt,
+          absentCount: absentAtt,
+          createdAt: st.createdAt,
         };
       })
     );
 
-    return NextResponse.json({ students: studentListWithDetails });
+    return NextResponse.json({ students: studentList });
   } catch (error: any) {
-    console.error('Fetch students error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
@@ -110,74 +78,103 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const currentUser = await getCurrentUser(req);
-    if (!currentUser || (currentUser.role !== 'secretary' && currentUser.role !== 'admin')) {
-      return NextResponse.json({ error: 'إضافة الطلاب مسموحة للسكرتيرة والأدمن فقط' }, { status: 403 });
+    if (!currentUser) {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
-
     await connectToDatabase();
+
     const body = await req.json();
-    const { name, phone, grade, subjectIds, monthlyFee } = body;
+    const { name, phone, parentPhone, subjectName, teacherId, grade, monthlyFee, notes } = body;
 
-    if (!name || !phone) {
-      return NextResponse.json({ error: 'اسم الطالب ورقم الهاتف مطلوبان' }, { status: 400 });
+    if (!name || !phone || !parentPhone || !subjectName || !grade) {
+      return NextResponse.json({ error: 'يرجى إدخال اسم الطالب، رقم الفون، رقم فون الوالد، المادة، والصف' }, { status: 400 });
     }
 
-    const cleanPhone = phone.trim();
+    const student = await Student.create({
+      name: name.trim(),
+      phone: phone.trim(),
+      parentPhone: parentPhone.trim(),
+      subjectName: subjectName.trim(),
+      teacher: teacherId || undefined,
+      grade: grade.trim(),
+      monthlyFee: Number(monthlyFee) || 0,
+      notes: notes?.trim() || '',
+    });
 
-    // Check existing
-    let student = await User.findOne({ phone: cleanPhone });
-    if (student) {
-      if (student.role !== 'student') {
-        return NextResponse.json({ error: 'رقم الهاتف مسجل لحساب نوع آخر' }, { status: 400 });
-      }
-      student.name = name.trim();
-      student.grade = grade?.trim() || student.grade;
-      await student.save();
-    } else {
-      student = await User.create({
-        name: name.trim(),
-        phone: cleanPhone,
-        grade: grade?.trim() || 'الصف الأول الثانوي',
-        role: 'student',
-      });
-    }
-
-    // Assign subjects
-    if (Array.isArray(subjectIds) && subjectIds.length > 0) {
-      for (const subId of subjectIds) {
-        await Enrollment.findOneAndUpdate(
-          { student: student._id, subject: subId },
-          { student: student._id, subject: subId },
-          { upsert: true }
-        );
-      }
-    }
-
-    // Initialize current month payment record
+    // Create current month payment placeholder
     const currentMonth = new Date().toISOString().substring(0, 7);
-    await Payment.findOneAndUpdate(
-      { student: student._id, month: currentMonth },
+    await Payment.create({
+      student: student._id,
+      month: currentMonth,
+      amount: Number(monthlyFee) || 0,
+      status: 'unpaid',
+      paymentReason: 'مصاريف الدرس',
+    });
+
+    return NextResponse.json({ success: true, student });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+export async function PUT(req: NextRequest) {
+  try {
+    const currentUser = await getCurrentUser(req);
+    if (!currentUser) {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
+    await connectToDatabase();
+
+    const body = await req.json();
+    const { id, name, phone, parentPhone, subjectName, teacherId, grade, monthlyFee, notes, grades } = body;
+
+    if (!id) {
+      return NextResponse.json({ error: 'معرف الطالب مطلوب' }, { status: 400 });
+    }
+
+    const updatedStudent = await Student.findByIdAndUpdate(
+      id,
       {
-        student: student._id,
-        month: currentMonth,
-        amount: monthlyFee || 300,
-        status: 'unpaid',
+        name: name?.trim(),
+        phone: phone?.trim(),
+        parentPhone: parentPhone?.trim(),
+        subjectName: subjectName?.trim(),
+        teacher: teacherId || undefined,
+        grade: grade?.trim(),
+        monthlyFee: Number(monthlyFee) || 0,
+        notes: notes?.trim() || '',
+        grades: grades || [],
       },
-      { upsert: true }
+      { new: true }
     );
 
-    return NextResponse.json({
-      success: true,
-      message: 'تم إضافة الطالب وتخصيص المواد بنجاح',
-      student: {
-        id: student._id.toString(),
-        name: student.name,
-        phone: student.phone,
-        grade: student.grade,
-      },
-    });
+    return NextResponse.json({ success: true, student: updatedStudent });
   } catch (error: any) {
-    console.error('Create student error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const currentUser = await getCurrentUser(req);
+    if (!currentUser) {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
+    await connectToDatabase();
+
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ error: 'معرف الطالب مطلوب' }, { status: 400 });
+    }
+
+    await Student.findByIdAndDelete(id);
+    await Payment.deleteMany({ student: id });
+    await Attendance.deleteMany({ student: id });
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

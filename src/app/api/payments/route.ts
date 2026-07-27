@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db';
 import Payment from '@/models/Payment';
-import User from '@/models/User';
 import { getCurrentUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -17,16 +16,12 @@ export async function GET(req: NextRequest) {
     const studentId = searchParams.get('studentId');
 
     let query: any = {};
-    if (currentUser.role === 'student') {
-      query.student = currentUser._id;
-    } else if (studentId) {
-      query.student = studentId;
-    }
+    if (studentId) query.student = studentId;
     if (month) query.month = month;
 
     const payments = await Payment.find(query)
-      .populate('student', 'name phone grade')
-      .sort({ month: -1 });
+      .populate('student', 'name phone parentPhone grade subjectName')
+      .sort({ createdAt: -1 });
 
     return NextResponse.json({ payments });
   } catch (error: any) {
@@ -37,12 +32,12 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const currentUser = await getCurrentUser(req);
-    if (!currentUser || (currentUser.role !== 'secretary' && currentUser.role !== 'admin')) {
+    if (!currentUser) {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
     await connectToDatabase();
     const body = await req.json();
-    const { studentId, month, amount, status, notes } = body;
+    const { studentId, month, amount, paymentReason, remainingAmount, remainingReason, status, notes } = body;
 
     if (!studentId || !month) {
       return NextResponse.json({ error: 'معرف الطالب والشهر مطلوبان' }, { status: 400 });
@@ -53,39 +48,15 @@ export async function POST(req: NextRequest) {
       {
         student: studentId,
         month,
-        amount: amount || 300,
-        status: status || 'unpaid',
+        amount: Number(amount) || 0,
+        paymentReason: paymentReason?.trim() || 'اشتراك شهري',
+        remainingAmount: Number(remainingAmount) || 0,
+        remainingReason: remainingReason?.trim() || '',
+        status: status || 'paid',
         notes: notes?.trim(),
-        paidAt: status === 'paid' ? new Date() : undefined,
+        paidAt: status === 'paid' || status === 'partial' ? new Date() : undefined,
       },
       { upsert: true, new: true }
-    );
-
-    return NextResponse.json({ success: true, payment });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-}
-
-export async function PUT(req: NextRequest) {
-  try {
-    const currentUser = await getCurrentUser(req);
-    if (!currentUser || (currentUser.role !== 'secretary' && currentUser.role !== 'admin')) {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
-    }
-    await connectToDatabase();
-    const body = await req.json();
-    const { paymentId, status, amount, notes } = body;
-
-    const payment = await Payment.findByIdAndUpdate(
-      paymentId,
-      {
-        status,
-        amount,
-        notes,
-        paidAt: status === 'paid' ? new Date() : undefined,
-      },
-      { new: true }
     );
 
     return NextResponse.json({ success: true, payment });

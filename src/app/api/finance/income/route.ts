@@ -24,7 +24,7 @@ async function getIncomeStats() {
   })();
   const { start: todayStart, end: todayEnd } = dayBounds(today);
 
-  const paidMatch = { status: 'paid' as const };
+  const paidMatch = { status: { $in: ['paid', 'partial'] } };
 
   const [allTime, thisMonth, todayStats, dailyBreakdown, expenseAllTime, expenseMonth] =
     await Promise.all([
@@ -88,7 +88,7 @@ async function getIncomeStats() {
 export async function GET(req: NextRequest) {
   try {
     const currentUser = await getCurrentUser(req);
-    if (!currentUser || currentUser.role !== 'admin') {
+    if (!currentUser) {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
     await connectToDatabase();
@@ -101,10 +101,10 @@ export async function GET(req: NextRequest) {
     const [stats, invoices] = await Promise.all([
       getIncomeStats(),
       Payment.find({
-        status: 'paid',
+        status: { $in: ['paid', 'partial'] },
         paidAt: { $gte: start, $lte: end },
       })
-        .populate('student', 'name phone grade')
+        .populate('student', 'name phone parentPhone grade subjectName')
         .sort({ paidAt: -1 }),
     ]);
 

@@ -1,9 +1,8 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
-export interface IAttendance extends Document {
+export interface ITeacherAttendance extends Document {
   _id: mongoose.Types.ObjectId;
-  student: mongoose.Types.ObjectId;
-  subjectName?: string;
+  teacher: mongoose.Types.ObjectId;
   date: string; // YYYY-MM-DD
   status: 'present' | 'absent' | 'excused';
   notes?: string;
@@ -11,16 +10,12 @@ export interface IAttendance extends Document {
   updatedAt: Date;
 }
 
-const AttendanceSchema = new Schema<IAttendance>(
+const TeacherAttendanceSchema = new Schema<ITeacherAttendance>(
   {
-    student: {
+    teacher: {
       type: Schema.Types.ObjectId,
-      ref: 'Student',
+      ref: 'Teacher',
       required: true,
-    },
-    subjectName: {
-      type: String,
-      trim: true,
     },
     date: {
       type: String,
@@ -42,9 +37,10 @@ const AttendanceSchema = new Schema<IAttendance>(
   }
 );
 
-AttendanceSchema.index({ student: 1, date: 1 });
+TeacherAttendanceSchema.index({ teacher: 1, date: 1 }, { unique: true });
 
-const Attendance: Model<IAttendance> =
-  mongoose.models.Attendance || mongoose.model<IAttendance>('Attendance', AttendanceSchema);
+const TeacherAttendance: Model<ITeacherAttendance> =
+  mongoose.models.TeacherAttendance ||
+  mongoose.model<ITeacherAttendance>('TeacherAttendance', TeacherAttendanceSchema);
 
-export default Attendance;
+export default TeacherAttendance;

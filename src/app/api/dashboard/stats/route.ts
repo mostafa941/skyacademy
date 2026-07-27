@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db';
-import User from '@/models/User';
-import Subject from '@/models/Subject';
-import Enrollment from '@/models/Enrollment';
+import Student from '@/models/Student';
+import Teacher from '@/models/Teacher';
+import Room from '@/models/Room';
+import Note from '@/models/Note';
 import Payment from '@/models/Payment';
 import Expense from '@/models/Expense';
 import Attendance from '@/models/Attendance';
-import Evaluation from '@/models/Evaluation';
 import { getCurrentUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   try {
     const currentUser = await getCurrentUser(req);
-    if (!currentUser || currentUser.role !== 'admin') {
+    if (!currentUser) {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
     await connectToDatabase();
@@ -30,49 +30,48 @@ export async function GET(req: NextRequest) {
     const [
       totalStudents,
       totalTeachers,
-      totalSecretaries,
-      totalSubjects,
+      totalTrainers,
+      totalRooms,
+      uncompletedNotes,
       paidPayments,
       unpaidPayments,
       presentCount,
       absentCount,
-      recentEvaluations,
-      recentStudents,
       incomeAllTime,
       incomeMonth,
       incomeToday,
       expenseAllTime,
       expenseMonth,
+      expenseToday,
     ] = await Promise.all([
-      User.countDocuments({ role: 'student' }),
-      User.countDocuments({ role: 'teacher' }),
-      User.countDocuments({ role: 'secretary' }),
-      Subject.countDocuments(),
+      Student.countDocuments(),
+      Teacher.countDocuments({ type: 'teacher' }),
+      Teacher.countDocuments({ type: 'trainer' }),
+      Room.countDocuments(),
+      Note.countDocuments({ isCompleted: false }),
       Payment.countDocuments({ month: currentMonth, status: 'paid' }),
       Payment.countDocuments({ month: currentMonth, status: 'unpaid' }),
       Attendance.countDocuments({ status: 'present' }),
       Attendance.countDocuments({ status: 'absent' }),
-      Evaluation.find({})
-        .populate('student', 'name')
-        .populate('teacher', 'name subjectName')
-        .sort({ createdAt: -1 })
-        .limit(5),
-      User.find({ role: 'student' }).sort({ createdAt: -1 }).limit(5),
       Payment.aggregate([
-        { $match: { status: 'paid' } },
+        { $match: { status: { $in: ['paid', 'partial'] } } },
         { $group: { _id: null, total: { $sum: '$amount' } } },
       ]),
       Payment.aggregate([
-        { $match: { status: 'paid', paidAt: { $gte: monthStart, $lte: monthEnd } } },
+        { $match: { status: { $in: ['paid', 'partial'] }, paidAt: { $gte: monthStart, $lte: monthEnd } } },
         { $group: { _id: null, total: { $sum: '$amount' } } },
       ]),
       Payment.aggregate([
-        { $match: { status: 'paid', paidAt: { $gte: todayStart, $lte: todayEnd } } },
+        { $match: { status: { $in: ['paid', 'partial'] }, paidAt: { $gte: todayStart, $lte: todayEnd } } },
         { $group: { _id: null, total: { $sum: '$amount' } } },
       ]),
       Expense.aggregate([{ $group: { _id: null, total: { $sum: '$amount' } } }]),
       Expense.aggregate([
         { $match: { date: { $regex: `^${currentMonth}` } } },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ]),
+      Expense.aggregate([
+        { $match: { date: today } },
         { $group: { _id: null, total: { $sum: '$amount' } } },
       ]),
     ]);
@@ -81,13 +80,16 @@ export async function GET(req: NextRequest) {
     const totalExpenses = expenseAllTime[0]?.total || 0;
     const monthIncome = incomeMonth[0]?.total || 0;
     const monthExpenses = expenseMonth[0]?.total || 0;
+    const todayIncome = incomeToday[0]?.total || 0;
+    const todayExpenses = expenseToday[0]?.total || 0;
 
     return NextResponse.json({
       stats: {
         totalStudents,
         totalTeachers,
-        totalSecretaries,
-        totalSubjects,
+        totalTrainers,
+        totalRooms,
+        uncompletedNotes,
         payments: {
           paid: paidPayments,
           unpaid: unpaidPayments,
@@ -107,12 +109,12 @@ export async function GET(req: NextRequest) {
           monthIncome,
           monthExpenses,
           netMonth: monthIncome - monthExpenses,
-          todayIncome: incomeToday[0]?.total || 0,
+          todayIncome,
+          todayExpenses,
+          netToday: todayIncome - todayExpenses,
           month: currentMonth,
         },
       },
-      recentEvaluations,
-      recentStudents,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

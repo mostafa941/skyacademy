@@ -5,6 +5,8 @@ export interface IExpense extends Document {
   amount: number;
   date: string; // YYYY-MM-DD
   reason: string;
+  type: 'general' | 'teacher_loan'; // سلفة مدرس/مدرب أو مصروف عام
+  teacher?: mongoose.Types.ObjectId;
   createdBy: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -27,6 +29,15 @@ const ExpenseSchema = new Schema<IExpense>(
       required: true,
       trim: true,
     },
+    type: {
+      type: String,
+      enum: ['general', 'teacher_loan'],
+      default: 'general',
+    },
+    teacher: {
+      type: Schema.Types.ObjectId,
+      ref: 'Teacher',
+    },
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: 'User',
@@ -39,6 +50,7 @@ const ExpenseSchema = new Schema<IExpense>(
 );
 
 ExpenseSchema.index({ date: -1 });
+ExpenseSchema.index({ teacher: 1 });
 
 const Expense: Model<IExpense> =
   mongoose.models.Expense || mongoose.model<IExpense>('Expense', ExpenseSchema);

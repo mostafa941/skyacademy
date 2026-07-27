@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
-export type UserRole = 'admin' | 'teacher' | 'secretary' | 'student';
+export type UserRole = 'admin' | 'secretary';
 
 export interface IUser extends Document {
   _id: mongoose.Types.ObjectId;
@@ -9,8 +9,6 @@ export interface IUser extends Document {
   phone: string;
   password?: string;
   role: UserRole;
-  subjectName?: string; // For teachers
-  grade?: string; // For students
   createdAt: Date;
   updatedAt: Date;
 }
@@ -37,16 +35,9 @@ const UserSchema = new Schema<IUser>(
     },
     role: {
       type: String,
-      enum: ['admin', 'teacher', 'secretary', 'student'],
+      enum: ['admin', 'secretary'],
       required: true,
-    },
-    subjectName: {
-      type: String,
-      trim: true,
-    },
-    grade: {
-      type: String,
-      trim: true,
+      default: 'secretary',
     },
   },
   {
@@ -54,10 +45,8 @@ const UserSchema = new Schema<IUser>(
   }
 );
 
-// Compound index or individual indices for fast logins
 UserSchema.index({ phone: 1 });
 UserSchema.index({ email: 1 });
-UserSchema.index({ role: 1 });
 
 const User: Model<IUser> = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
 

@@ -4,8 +4,11 @@ export interface IPayment extends Document {
   _id: mongoose.Types.ObjectId;
   student: mongoose.Types.ObjectId;
   month: string; // YYYY-MM
-  amount: number;
-  status: 'paid' | 'unpaid';
+  amount: number; // Paid amount
+  paymentReason?: string; // سبب الدفع
+  remainingAmount?: number; // المبلغ المتبقي
+  remainingReason?: string; // سبب الفلوس المتبقية
+  status: 'paid' | 'unpaid' | 'partial';
   notes?: string;
   paidAt?: Date;
   createdAt: Date;
@@ -16,7 +19,7 @@ const PaymentSchema = new Schema<IPayment>(
   {
     student: {
       type: Schema.Types.ObjectId,
-      ref: 'User',
+      ref: 'Student',
       required: true,
     },
     month: {
@@ -28,9 +31,22 @@ const PaymentSchema = new Schema<IPayment>(
       type: Number,
       default: 0,
     },
+    paymentReason: {
+      type: String,
+      trim: true,
+      default: 'اشتراك شهري',
+    },
+    remainingAmount: {
+      type: Number,
+      default: 0,
+    },
+    remainingReason: {
+      type: String,
+      trim: true,
+    },
     status: {
       type: String,
-      enum: ['paid', 'unpaid'],
+      enum: ['paid', 'unpaid', 'partial'],
       default: 'unpaid',
     },
     notes: {
@@ -46,8 +62,9 @@ const PaymentSchema = new Schema<IPayment>(
   }
 );
 
-PaymentSchema.index({ student: 1, month: 1 }, { unique: true });
+PaymentSchema.index({ student: 1, month: 1 });
 
-const Payment: Model<IPayment> = mongoose.models.Payment || mongoose.model<IPayment>('Payment', PaymentSchema);
+const Payment: Model<IPayment> =
+  mongoose.models.Payment || mongoose.model<IPayment>('Payment', PaymentSchema);
 
 export default Payment;

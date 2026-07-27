@@ -51,11 +51,11 @@ export async function getCurrentUser(req: NextRequest) {
 }
 
 /**
- * Ensures the default Admin account exists in the database
+ * Ensures default Admin and Secretary accounts exist in the database
  */
-export async function seedAdminUserIfNeeded() {
+export async function seedDefaultUsersIfNeeded() {
   await connectToDatabase();
-  const existingAdmin = await User.findOne({ role: 'admin' });
+  const existingAdmin = await User.findOne({ email: 'admin@sky.com' });
   if (!existingAdmin) {
     await User.create({
       name: 'مدير النظام',
@@ -65,5 +65,23 @@ export async function seedAdminUserIfNeeded() {
       role: 'admin',
     });
     console.log('Default Admin user created: admin@sky.com / admin1234');
+  } else if (existingAdmin.password !== 'admin1234') {
+    existingAdmin.password = 'admin1234';
+    await existingAdmin.save();
+  }
+
+  const existingSecretary = await User.findOne({ email: 'secretary@sky.com' });
+  if (!existingSecretary) {
+    await User.create({
+      name: 'السكرتيرة',
+      email: 'secretary@sky.com',
+      phone: '01111111111',
+      password: 'sec1234',
+      role: 'secretary',
+    });
+    console.log('Default Secretary user created: secretary@sky.com / sec1234');
+  } else if (existingSecretary.password !== 'sec1234') {
+    existingSecretary.password = 'sec1234';
+    await existingSecretary.save();
   }
 }
