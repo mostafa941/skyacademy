@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db';
 import Payment from '@/models/Payment';
 import Expense from '@/models/Expense';
+import Income from '@/models/Income';
 import { getCurrentUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -26,7 +27,10 @@ async function getIncomeStats() {
 
   const paidMatch = { status: { $in: ['paid', 'partial'] } };
 
-  const [allTime, thisMonth, todayStats, dailyBreakdown, expenseAllTime, expenseMonth] =
+  const [
+    allTime, thisMonth, todayStats, dailyBreakdown, expenseAllTime, expenseMonth,
+    manualAllTime, manualThisMonth, manualToday
+  ] =
     await Promise.all([
       Payment.aggregate([
         { $match: paidMatch },
@@ -59,12 +63,26 @@ async function getIncomeStats() {
         { $match: { date: { $regex: `^${currentMonth}` } } },
         { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
       ]),
+      Income.aggregate([
+        { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
+      ]),
+      Income.aggregate([
+        { $match: { date: { $regex: `^${currentMonth}` } } },
+        { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
+      ]),
+      Income.aggregate([
+        { $match: { date: today } },
+        { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
+      ]),
     ]);
 
-  const totalIncome = allTime[0]?.total || 0;
+  const totalIncome = (allTime[0]?.total || 0) + (manualAllTime[0]?.total || 0);
   const totalExpenses = expenseAllTime[0]?.total || 0;
-  const monthIncome = thisMonth[0]?.total || 0;
+  const monthIncome = (thisMonth[0]?.total || 0) + (manualThisMonth[0]?.total || 0);
   const monthExpenses = expenseMonth[0]?.total || 0;
+  
+  // Notice we used `arguments` index in the manual replacement.
+  // Actually, to make it clean, let's extract the array elements explicitly below.
 
   return {
     totalAllTime: totalIncome,
@@ -94,11 +112,26 @@ export async function GET(req: NextRequest) {
     await connectToDatabase();
 
     const { searchParams } = new URL(req.url);
-    const date = searchParams.get('date') || new Date().toISOString().substring(0, 10);
+    const date = searchParams.get('date');
+    const month = searchParams.get('month');
 
-    const { start, end } = dayBounds(date);
+    let start: Date, end: Date;
+    let queryDateStr = '';
 
-    const [stats, invoices] = await Promise.all([
+    if (month) {
+      const [year, m] = month.split('-').map(Number);
+      start = new Date(Date.UTC(year, m - 1, 1));
+      end = new Date(Date.UTC(year, m, 0, 23, 59, 59, 999));
+      queryDateStr = month;
+    } else {
+      const d = date || new Date().toISOString().substring(0, 10);
+      const bounds = dayBounds(d);
+      start = bounds.start;
+      end = bounds.end;
+      queryDateStr = d;
+    }
+
+    const [stats, invoices, manualIncomes] = await Promise.all([
       getIncomeStats(),
       Payment.find({
         status: { $in: ['paid', 'partial'] },
@@ -106,14 +139,40 @@ export async function GET(req: NextRequest) {
       })
         .populate('student', 'name phone parentPhone grade subjectName')
         .sort({ paidAt: -1 }),
+      Income.find(month ? { date: { $regex: `^${month}` } } : { date: queryDateStr })
+        .populate('createdBy', 'name')
+        .sort({ createdAt: -1 }),
     ]);
+    
+    // Map manual incomes to match invoice shape roughly, or handle them in the frontend
+    const combinedInvoices = [
+      ...invoices.map(p => ({
+        _id: p._id,
+        type: 'student_payment',
+        student: p.student,
+        month: p.month,
+        amount: p.amount,
+        remainingAmount: p.remainingAmount || 0,
+        paymentType: p.paymentType || 'monthly',
+        paymentReason: p.paymentReason,
+        paidAt: p.paidAt,
+      })),
+      ...manualIncomes.map(i => ({
+        _id: i._id,
+        type: 'manual_income',
+        amount: i.amount,
+        paymentReason: i.reason,
+        paidAt: i.createdAt,
+        createdBy: i.createdBy,
+      }))
+    ].sort((a: any, b: any) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
 
     return NextResponse.json({
       stats,
-      invoices,
-      selectedDate: date,
-      dayTotal: invoices.reduce((sum, p) => sum + p.amount, 0),
-      dayCount: invoices.length,
+      invoices: combinedInvoices,
+      selectedDate: queryDateStr,
+      dayTotal: combinedInvoices.reduce((sum, p) => sum + p.amount, 0),
+      dayCount: combinedInvoices.length,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'حدث خطأ';

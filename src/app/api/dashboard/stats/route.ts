@@ -6,6 +6,7 @@ import Room from '@/models/Room';
 import Note from '@/models/Note';
 import Payment from '@/models/Payment';
 import Expense from '@/models/Expense';
+import Income from '@/models/Income';
 import Attendance from '@/models/Attendance';
 import { getCurrentUser } from '@/lib/auth';
 
@@ -40,6 +41,9 @@ export async function GET(req: NextRequest) {
       incomeAllTime,
       incomeMonth,
       incomeToday,
+      manualIncomeAllTime,
+      manualIncomeMonth,
+      manualIncomeToday,
       expenseAllTime,
       expenseMonth,
       expenseToday,
@@ -65,6 +69,15 @@ export async function GET(req: NextRequest) {
         { $match: { status: { $in: ['paid', 'partial'] }, paidAt: { $gte: todayStart, $lte: todayEnd } } },
         { $group: { _id: null, total: { $sum: '$amount' } } },
       ]),
+      Income.aggregate([{ $group: { _id: null, total: { $sum: '$amount' } } }]),
+      Income.aggregate([
+        { $match: { date: { $regex: `^${currentMonth}` } } },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ]),
+      Income.aggregate([
+        { $match: { date: today } },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ]),
       Expense.aggregate([{ $group: { _id: null, total: { $sum: '$amount' } } }]),
       Expense.aggregate([
         { $match: { date: { $regex: `^${currentMonth}` } } },
@@ -76,11 +89,11 @@ export async function GET(req: NextRequest) {
       ]),
     ]);
 
-    const totalIncome = incomeAllTime[0]?.total || 0;
+    const totalIncome = (incomeAllTime[0]?.total || 0) + (manualIncomeAllTime[0]?.total || 0);
     const totalExpenses = expenseAllTime[0]?.total || 0;
-    const monthIncome = incomeMonth[0]?.total || 0;
+    const monthIncome = (incomeMonth[0]?.total || 0) + (manualIncomeMonth[0]?.total || 0);
     const monthExpenses = expenseMonth[0]?.total || 0;
-    const todayIncome = incomeToday[0]?.total || 0;
+    const todayIncome = (incomeToday[0]?.total || 0) + (manualIncomeToday[0]?.total || 0);
     const todayExpenses = expenseToday[0]?.total || 0;
 
     return NextResponse.json({

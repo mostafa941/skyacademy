@@ -625,3 +625,61 @@ tr:hover td {
   }
 }
 
+/* ===================== PRINT STYLES ===================== */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .pdf-print-overlay {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: white !important;
+    z-index: 9999;
+  }
+  .pdf-print-overlay, .pdf-print-overlay * {
+    visibility: visible !important;
+  }
+  .pdf-print-container {
+    color: black !important;
+    background: white !important;
+    padding: 0;
+    margin: 0;
+    box-shadow: none !important;
+  }
+  .pdf-print-actions {
+    display: none !important;
+  }
+  .pdf-header, .pdf-content, .pdf-footer {
+    page-break-inside: avoid;
+  }
+}
+
+.pdf-print-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-primary);
+  z-index: 1000;
+  overflow-y: auto;
+  padding: 40px;
+}
+
+.pdf-print-actions {
+  display: flex;
+  gap: 16px;
+  justify-content: flex-end;
+  margin-bottom: 24px;
+}
+
+.pdf-print-container {
+  background: white;
+  color: black;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 40px;
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+  min-height: 1056px;
+}
+

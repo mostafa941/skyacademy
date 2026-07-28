@@ -3,8 +3,10 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 export interface IPayment extends Document {
   _id: mongoose.Types.ObjectId;
   student: mongoose.Types.ObjectId;
+  teacher?: mongoose.Types.ObjectId;
   month: string; // YYYY-MM
   amount: number; // Paid amount
+  paymentType?: 'session' | 'monthly'; // حصة أو شهر
   paymentReason?: string; // سبب الدفع
   remainingAmount?: number; // المبلغ المتبقي
   remainingReason?: string; // سبب الفلوس المتبقية
@@ -22,6 +24,10 @@ const PaymentSchema = new Schema<IPayment>(
       ref: 'Student',
       required: true,
     },
+    teacher: {
+      type: Schema.Types.ObjectId,
+      ref: 'Teacher',
+    },
     month: {
       type: String,
       required: true,
@@ -30,6 +36,11 @@ const PaymentSchema = new Schema<IPayment>(
     amount: {
       type: Number,
       default: 0,
+    },
+    paymentType: {
+      type: String,
+      enum: ['session', 'monthly'],
+      default: 'monthly',
     },
     paymentReason: {
       type: String,

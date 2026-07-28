@@ -60,6 +60,7 @@ export default function DashboardLayout({ role }: { children?: React.ReactNode; 
         router.replace('/');
       }
     }
+    
     fetchUser();
   }, [role, router]);
 

@@ -102,6 +102,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Removed notification
+
     return NextResponse.json({ success: true, expense });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'حدث خطأ';

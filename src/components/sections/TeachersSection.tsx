@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import PDFReport from '../PDFReport';
 
 interface TeacherStaff {
   id: string;
@@ -34,12 +35,30 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
   const [rooms, setRooms] = useState<RoomOption[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Views
+  const [currentView, setCurrentView] = useState<'list' | 'profile'>('list');
+  const [selectedStaff, setSelectedStaff] = useState<TeacherStaff | null>(null);
+  const [teacherStudents, setTeacherStudents] = useState<any[]>([]);
+  const [loadingStudents, setLoadingStudents] = useState(false);
+  const [search, setSearch] = useState('');
+
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
-  const [selectedStaff, setSelectedStaff] = useState<TeacherStaff | null>(null);
-  const [showDetailModal, setShowDetailModal] = useState(false);
   const [showAttModal, setShowAttModal] = useState(false);
   const [showLoanModal, setShowLoanModal] = useState(false);
+  const [showPdf, setShowPdf] = useState(false);
+
+  // Student Payment Modal (Inside Teacher Profile)
+  const [showPayModal, setShowPayModal] = useState(false);
+  const [selectedStudentForPay, setSelectedStudentForPay] = useState<any>(null);
+  const [payForm, setPayForm] = useState({
+    amount: 0,
+    paymentType: 'monthly' as 'session' | 'monthly',
+    paymentReason: '',
+    remainingAmount: 0,
+    remainingReason: '',
+    status: 'paid' as 'paid' | 'unpaid' | 'partial',
+  });
 
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
@@ -77,6 +96,10 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
       if (resSt.ok) {
         const d = await resSt.json();
         setStaffList(d.teachers || []);
+        if (selectedStaff) {
+          const updated = d.teachers.find((s: TeacherStaff) => s.id === selectedStaff.id);
+          if (updated) setSelectedStaff(updated);
+        }
       }
       if (resRm.ok) {
         const d = await resRm.json();
@@ -87,11 +110,43 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
     } finally {
       setLoading(false);
     }
-  }, [staffType]);
+  }, [staffType, selectedStaff]);
 
   useEffect(() => {
     loadData();
-  }, [loadData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staffType]); 
+
+  const refreshList = async () => {
+    try {
+      const resSt = await fetch(`/api/teachers?type=${staffType}`);
+      if (resSt.ok) {
+        const d = await resSt.json();
+        setStaffList(d.teachers || []);
+        if (selectedStaff) {
+          const updated = d.teachers.find((s: TeacherStaff) => s.id === selectedStaff.id);
+          if (updated) setSelectedStaff(updated);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const loadTeacherStudents = async (teacherId: string) => {
+    setLoadingStudents(true);
+    try {
+      const res = await fetch(`/api/teachers/${teacherId}/students`);
+      if (res.ok) {
+        const data = await res.json();
+        setTeacherStudents(data.students || []);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingStudents(false);
+    }
+  };
 
   // Save / Edit Staff
   const handleSaveStaff = async () => {
@@ -114,7 +169,7 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
       if (res.ok) {
         showToast(staffForm.id ? `تم تعديل ${labelSingle}` : `تم إضافة ${labelSingle} بنجاح`);
         setShowAddModal(false);
-        loadData();
+        refreshList();
       } else {
         showToast(data.error || 'حدث خطأ', 'error');
       }
@@ -130,8 +185,8 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
       const res = await fetch(`/api/teachers?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
         showToast(`تم حذف الـ ${labelSingle}`);
-        setShowDetailModal(false);
-        loadData();
+        setCurrentView('list');
+        refreshList();
       } else {
         const d = await res.json();
         showToast(d.error || 'خطأ أثناء الحذف', 'error');
@@ -158,7 +213,7 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
       if (res.ok) {
         showToast(`تم تسجيل حضور ${labelSingle}`);
         setShowAttModal(false);
-        loadData();
+        refreshList();
       }
     } catch {
       showToast('خطأ في الاتصال', 'error');
@@ -183,100 +238,289 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
       if (res.ok) {
         showToast(`تم تسجيل السلفة وتحديث رصيد الـ ${labelSingle}`);
         setShowLoanModal(false);
-        loadData();
+        refreshList();
       }
     } catch {
       showToast('خطأ في الاتصال', 'error');
     }
   };
 
+  const handleSaveStudentPayment = async () => {
+    if (!selectedStudentForPay || !selectedStaff) return;
+    try {
+      const currentMonth = new Date().toISOString().substring(0, 7);
+      const res = await fetch('/api/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: selectedStudentForPay.id,
+          month: currentMonth,
+          amount: payForm.amount,
+          paymentType: payForm.paymentType,
+          paymentReason: payForm.paymentReason,
+          remainingAmount: payForm.remainingAmount,
+          remainingReason: payForm.remainingReason,
+          status: payForm.status,
+        }),
+      });
+      if (res.ok) {
+        showToast('تم تحديث حالة دفع الطالب');
+        setShowPayModal(false);
+        loadTeacherStudents(selectedStaff.id); // refresh students list
+        refreshList(); // refresh teacher balance
+      }
+    } catch {
+      showToast('خطأ في التحديث', 'error');
+    }
+  };
+
   const isAdmin = userRole === 'admin';
+  const filteredStaff = staffList.filter(s => s.name.includes(search) || s.phone.includes(search) || s.subjectName.includes(search));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Header */}
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-        <div>
-          <h1 className="page-title" style={{ fontSize: 'clamp(20px, 4vw, 26px)', fontWeight: 800 }}>
-            {iconEmoji} إدارة {labelTitle}
-          </h1>
-          <p className="page-subtitle" style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
-            متابعة {labelTitle}، القاعات، الحضور والغياب، والنسب المالية
-          </p>
-        </div>
-        <button className="btn btn-primary" onClick={() => {
-          setStaffForm({ id: '', name: '', phone: '', subjectName: '', roomId: '', teacherPercentage: 60, academyPercentage: 40, balance: 0 });
-          setShowAddModal(true);
-        }}>
-          + إضافة {labelSingle} جديد
-        </button>
-      </div>
+      {currentView === 'list' ? (
+        <>
+          {/* Header */}
+          <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <h1 className="page-title" style={{ fontSize: 'clamp(20px, 4vw, 26px)', fontWeight: 800 }}>
+                {iconEmoji} إدارة {labelTitle}
+              </h1>
+              <p className="page-subtitle" style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
+                متابعة {labelTitle}، الطلاب، الحضور والغياب، والحسابات
+              </p>
+            </div>
+            <button className="btn btn-primary" onClick={() => {
+              setStaffForm({ id: '', name: '', phone: '', subjectName: '', roomId: '', teacherPercentage: 60, academyPercentage: 40, balance: 0 });
+              setShowAddModal(true);
+            }}>
+              + إضافة {labelSingle} جديد
+            </button>
+          </div>
 
-      {/* Staff List */}
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '40px 0' }}>
-          <div className="spinner" style={{ width: 36, height: 36, margin: '0 auto 12px' }} />
-          <p style={{ color: 'var(--text-secondary)' }}>جاري التحميل...</p>
-        </div>
-      ) : staffList.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-state-icon">{iconEmoji}</div>
-          <p className="empty-state-text">لا يوجد {labelTitle} مسجلين بعد</p>
-        </div>
-      ) : (
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>اسم {labelSingle}</th>
-                <th>المادة / التخصص</th>
-                <th>القاعة</th>
-                <th>عدد الطلاب</th>
-                {isAdmin && <th>نسبة {labelSingle} / الأكاديمية</th>}
-                {isAdmin && <th>الرصيد / السلف</th>}
-                <th>الإجراءات والتقارير</th>
-              </tr>
-            </thead>
-            <tbody>
-              {staffList.map((st) => (
-                <tr key={st.id}>
-                  <td style={{ fontWeight: 700 }}>
-                    <div style={{ color: 'var(--text-primary)' }}>{st.name}</div>
-                    <div dir="ltr" style={{ textAlign: 'right', fontSize: 12, color: 'var(--text-muted)' }}>{st.phone}</div>
-                  </td>
-                  <td>
-                    <span className="badge badge-orange">{st.subjectName}</span>
-                  </td>
-                  <td>🏫 {st.roomName}</td>
-                  <td><strong style={{ color: 'var(--accent-orange)' }}>{st.studentCount} طالب</strong></td>
-                  {isAdmin && (
-                    <td>
-                      <span style={{ color: 'var(--success)', fontWeight: 700 }}>{st.teacherPercentage}%</span> / <span style={{ color: 'var(--text-muted)' }}>{st.academyPercentage}%</span>
-                    </td>
-                  )}
-                  {isAdmin && (
-                    <td>
-                      {st.balance < 0 ? (
-                        <span style={{ color: 'var(--error)', fontWeight: 700 }}>سالف {-st.balance} ج.م</span>
-                      ) : (
-                        <span style={{ color: 'var(--success)', fontWeight: 700 }}>مستحق {st.balance} ج.م</span>
+          <div className="card" style={{ padding: 16 }}>
+            <input
+              className="input"
+              placeholder={`🔍 ابحث باسم ال${labelSingle}، رقم الهاتف، أو المادة...`}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+          {/* Staff List */}
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '40px 0' }}>
+              <div className="spinner" style={{ width: 36, height: 36, margin: '0 auto 12px' }} />
+              <p style={{ color: 'var(--text-secondary)' }}>جاري التحميل...</p>
+            </div>
+          ) : staffList.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-state-icon">{iconEmoji}</div>
+              <p className="empty-state-text">لا يوجد {labelTitle} مسجلين بعد</p>
+            </div>
+          ) : (
+            <div className="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>اسم {labelSingle}</th>
+                    <th>المادة / التخصص</th>
+                    <th>القاعة</th>
+                    <th>عدد الطلاب</th>
+                    {isAdmin && <th>نسبة {labelSingle} / الأكاديمية</th>}
+                    {isAdmin && <th>الرصيد / السلف</th>}
+                    <th>الإجراءات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredStaff.map((st) => (
+                    <tr key={st.id} style={{ cursor: 'pointer' }} onClick={() => { 
+                      setSelectedStaff(st); 
+                      setCurrentView('profile'); 
+                      loadTeacherStudents(st.id); 
+                    }}>
+                      <td style={{ fontWeight: 700 }}>
+                        <div style={{ color: 'var(--text-primary)' }}>{st.name}</div>
+                        <div dir="ltr" style={{ textAlign: 'right', fontSize: 12, color: 'var(--text-muted)' }}>{st.phone}</div>
+                      </td>
+                      <td>
+                        <span className="badge badge-orange">{st.subjectName}</span>
+                      </td>
+                      <td>🏫 {st.roomName}</td>
+                      <td><strong style={{ color: 'var(--accent-orange)' }}>{st.studentCount} طالب</strong></td>
+                      {isAdmin && (
+                        <td>
+                          <span style={{ color: 'var(--success)', fontWeight: 700 }}>{st.teacherPercentage}%</span> / <span style={{ color: 'var(--text-muted)' }}>{st.academyPercentage}%</span>
+                        </td>
                       )}
-                    </td>
-                  )}
-                  <td>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button className="btn btn-secondary btn-sm" onClick={() => { setSelectedStaff(st); setShowDetailModal(true); }}>
-                        📋 التقرير الشامل
-                      </button>
+                      {isAdmin && (
+                        <td>
+                          {st.balance < 0 ? (
+                            <span style={{ color: 'var(--error)', fontWeight: 700 }}>سالف {-st.balance} ج.م</span>
+                          ) : (
+                            <span style={{ color: 'var(--success)', fontWeight: 700 }}>مستحق {st.balance} ج.م</span>
+                          )}
+                        </td>
+                      )}
+                      <td>
+                        <button className="btn btn-secondary btn-sm" onClick={(e) => { 
+                          e.stopPropagation(); 
+                          setSelectedStaff(st); 
+                          setCurrentView('profile'); 
+                          loadTeacherStudents(st.id); 
+                        }}>
+                          فتح الملف
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      ) : (
+        /* ================== PROFILE VIEW ================== */
+        selectedStaff && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24, animation: 'fadeIn 0.3s ease' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button className="btn btn-secondary btn-icon" onClick={() => { setCurrentView('list'); setSelectedStaff(null); setTeacherStudents([]); }}>
+                ←
+              </button>
+              <div>
+                <h1 className="page-title" style={{ fontSize: 'clamp(20px, 4vw, 26px)', fontWeight: 800 }}>ملف الـ {labelSingle}: {selectedStaff.name}</h1>
+                <p className="page-subtitle" style={{ fontSize: 14, color: 'var(--text-secondary)' }}>مادة: {selectedStaff.subjectName} — قاعة: {selectedStaff.roomName}</p>
+              </div>
+              <div style={{ marginRight: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button className="btn btn-secondary" onClick={() => setShowAttModal(true)}>📅 تسجيل حضور</button>
+                {isAdmin && <button className="btn btn-secondary" onClick={() => setShowLoanModal(true)}>💸 إضافة سلفة</button>}
+                <button className="btn btn-secondary" onClick={() => setShowPdf(true)}>📄 تصدير PDF</button>
+                <button className="btn btn-secondary" onClick={() => {
+                  setStaffForm({
+                    id: selectedStaff.id,
+                    name: selectedStaff.name,
+                    phone: selectedStaff.phone,
+                    subjectName: selectedStaff.subjectName,
+                    roomId: selectedStaff.roomId,
+                    teacherPercentage: selectedStaff.teacherPercentage,
+                    academyPercentage: selectedStaff.academyPercentage,
+                    balance: selectedStaff.balance,
+                  });
+                  setShowAddModal(true);
+                }}>✏️ تعديل</button>
+                {isAdmin && (
+                  <button className="btn btn-ghost" style={{ color: 'var(--error)' }} onClick={() => handleDeleteStaff(selectedStaff.id)}>🗑️</button>
+                )}
+              </div>
+            </div>
+
+            {/* Stats Cards */}
+            <div className="grid-4">
+              <div className="card" style={{ padding: 16 }}>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>عدد الطلاب الفعلي</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--accent-orange)' }}>{teacherStudents.length} طلاب</div>
+              </div>
+              <div className="card" style={{ padding: 16 }}>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>أيام الحضور</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--success)' }}>{selectedStaff.presentCount} يوم</div>
+              </div>
+              {isAdmin && (
+                <>
+                  <div className="card" style={{ padding: 16 }}>
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>النسبة المتفق عليها</div>
+                    <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--accent-gold)' }}>{selectedStaff.teacherPercentage}% لكم</div>
+                  </div>
+                  <div className="card" style={{ padding: 16 }}>
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>الرصيد المالي الحالي</div>
+                    <div style={{ fontSize: 24, fontWeight: 800, color: selectedStaff.balance < 0 ? 'var(--error)' : 'var(--success)' }}>
+                      {selectedStaff.balance} ج.م
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Teacher's Students Table */}
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div style={{ padding: 20, borderBottom: '1px solid var(--border)' }}>
+                <h3 style={{ fontSize: 18, fontWeight: 800 }}>👨‍🎓 قائمة طلاب المدرس ({teacherStudents.length}) ومتابعة الدفع</h3>
+              </div>
+              {loadingStudents ? (
+                <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                  <div className="spinner" style={{ width: 30, height: 30 }} />
+                </div>
+              ) : teacherStudents.length === 0 ? (
+                <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>لا يوجد طلاب مسجلين مع هذا الـ {labelSingle}</div>
+              ) : (
+                <div className="table-wrapper" style={{ border: 'none', borderRadius: 0 }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>اسم الطالب</th>
+                        <th>الصف</th>
+                        <th>الدفع الفعلي / المطلوب</th>
+                        <th>حالة الدفع (الشهر الحالي)</th>
+                        <th>نظام الدفع</th>
+                        <th>الإجراءات</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {teacherStudents.map(ts => (
+                        <tr key={ts.id}>
+                          <td style={{ fontWeight: 700 }}>{ts.name}</td>
+                          <td style={{ color: 'var(--text-secondary)' }}>{ts.grade}</td>
+                          <td>
+                            <strong style={{ color: 'var(--success)' }}>{ts.paymentAmount} ج.م</strong> 
+                            <span style={{ color: 'var(--text-muted)', margin: '0 4px' }}>/</span> 
+                            {ts.monthlyFee} ج.م
+                          </td>
+                          <td>
+                            {ts.paymentStatus === 'paid' ? (
+                              <span className="badge badge-success">تم الدفع</span>
+                            ) : ts.paymentStatus === 'partial' ? (
+                              <span className="badge badge-orange">جزئي (متبقي {ts.remainingAmount})</span>
+                            ) : (
+                              <span className="badge badge-danger">لم يدفع</span>
+                            )}
+                          </td>
+                          <td>
+                            {ts.paymentType === 'session' ? (
+                              <span className="badge badge-info">بالحصة ⏱️</span>
+                            ) : (
+                              <span className="badge badge-secondary">بالشهر 📅</span>
+                            )}
+                          </td>
+                          <td>
+                            <button className="btn btn-primary btn-sm" onClick={() => {
+                              setSelectedStudentForPay(ts);
+                              setPayForm({
+                                amount: ts.monthlyFee,
+                                paymentType: ts.paymentType || 'monthly',
+                                paymentReason: ts.paymentType === 'session' ? 'دفع حصة' : 'اشتراك شهري',
+                                remainingAmount: 0,
+                                remainingReason: '',
+                                status: 'paid'
+                              });
+                              setShowPayModal(true);
+                            }}>
+                              تسجيل دفع
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )
       )}
 
+      {/* Modals are kept below for both views */}
+      
       {/* Modal: Add / Edit Staff */}
       {showAddModal && (
         <div className="modal-backdrop" onClick={() => setShowAddModal(false)}>
@@ -334,81 +578,6 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
         </div>
       )}
 
-      {/* Detailed Staff Report Modal */}
-      {showDetailModal && selectedStaff && (
-        <div className="modal-backdrop" onClick={() => setShowDetailModal(false)}>
-          <div className="modal card-glass" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 600, maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
-              <div>
-                <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)' }}>{iconEmoji} تقرير الـ {labelSingle}: {selectedStaff.name}</h2>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>مادة: {selectedStaff.subjectName} — قاعة: {selectedStaff.roomName}</div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {/* Summary Stats */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
-                <div style={{ background: 'var(--bg-elevated)', padding: 12, borderRadius: 8 }}>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>عدد الطلاب</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--accent-orange)' }}>{selectedStaff.studentCount} طلاب</div>
-                </div>
-                <div style={{ background: 'var(--bg-elevated)', padding: 12, borderRadius: 8 }}>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>حضور الـ {labelSingle}</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--success)' }}>{selectedStaff.presentCount} يوم</div>
-                </div>
-                {isAdmin && (
-                  <div style={{ background: 'var(--bg-elevated)', padding: 12, borderRadius: 8 }}>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>نسبة الأرباح</div>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--accent-gold)' }}>{selectedStaff.teacherPercentage}% لكم</div>
-                  </div>
-                )}
-                {isAdmin && (
-                  <div style={{ background: 'var(--bg-elevated)', padding: 12, borderRadius: 8 }}>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>الرصيد الحالي</div>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: selectedStaff.balance < 0 ? 'var(--error)' : 'var(--success)' }}>
-                      {selectedStaff.balance} ج.م
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Actions */}
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <button className="btn btn-secondary btn-sm" onClick={() => setShowAttModal(true)}>📅 تسجيل حضور/غياب</button>
-                {isAdmin && <button className="btn btn-secondary btn-sm" onClick={() => setShowLoanModal(true)}>💸 إضافة سلفة / مصروف</button>}
-              </div>
-
-              <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
-                <button className="btn btn-secondary" onClick={() => {
-                  setStaffForm({
-                    id: selectedStaff.id,
-                    name: selectedStaff.name,
-                    phone: selectedStaff.phone,
-                    subjectName: selectedStaff.subjectName,
-                    roomId: selectedStaff.roomId,
-                    teacherPercentage: selectedStaff.teacherPercentage,
-                    academyPercentage: selectedStaff.academyPercentage,
-                    balance: selectedStaff.balance,
-                  });
-                  setShowDetailModal(false);
-                  setShowAddModal(true);
-                }}>
-                  ✏️ تعديل البيانات
-                </button>
-                {isAdmin && (
-                  <button className="btn btn-ghost" style={{ color: 'var(--error)' }} onClick={() => handleDeleteStaff(selectedStaff.id)}>
-                    🗑️ حذف
-                  </button>
-                )}
-                <button className="btn btn-ghost" style={{ marginRight: 'auto' }} onClick={() => setShowDetailModal(false)}>
-                  إغلاق
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Attendance Modal */}
       {showAttModal && selectedStaff && (
         <div className="modal-backdrop" onClick={() => setShowAttModal(false)}>
@@ -460,6 +629,88 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
             </div>
           </div>
         </div>
+      )}
+
+      {/* Student Payment Modal inside Teacher Profile */}
+      {showPayModal && selectedStudentForPay && (
+        <div className="modal-backdrop" onClick={() => setShowPayModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>💰 دفع مصاريف: {selectedStudentForPay.name}</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className="input-group">
+                <label className="input-label">نظام الدفع</label>
+                <select className="input" value={payForm.paymentType} onChange={(e) => setPayForm({ ...payForm, paymentType: e.target.value as any })}>
+                  <option value="monthly">اشتراك شهري 📅</option>
+                  <option value="session">دفع بالحصة ⏱️</option>
+                </select>
+              </div>
+              <div className="input-group">
+                <label className="input-label">حالة الدفع</label>
+                <select className="input" value={payForm.status} onChange={(e) => setPayForm({ ...payForm, status: e.target.value as any })}>
+                  <option value="paid">تم الدفع بالكامل ✅</option>
+                  <option value="partial">دفع جزئي (متبقي فلوس) ⚠️</option>
+                  <option value="unpaid">لم يدفع ❌</option>
+                </select>
+              </div>
+              <div className="input-group">
+                <label className="input-label">المبلغ المدفوع (ج.م)</label>
+                <input className="input" type="number" value={payForm.amount} onChange={(e) => setPayForm({ ...payForm, amount: +e.target.value })} />
+              </div>
+              <div className="input-group">
+                <label className="input-label">سبب الدفع / ملاحظة</label>
+                <input className="input" placeholder="مثال: اشتراك شهر يوليو أو حصة المراجعة" value={payForm.paymentReason} onChange={(e) => setPayForm({ ...payForm, paymentReason: e.target.value })} />
+              </div>
+
+              {payForm.status === 'partial' && (
+                <>
+                  <div className="input-group">
+                    <label className="input-label">المبلغ المتبقي (ج.م)</label>
+                    <input className="input" type="number" value={payForm.remainingAmount} onChange={(e) => setPayForm({ ...payForm, remainingAmount: +e.target.value })} />
+                  </div>
+                  <div className="input-group">
+                    <label className="input-label">سبب المبلغ المتبقي</label>
+                    <input className="input" placeholder="مثال: سداد باقي المبلغ الأسبوع القادم" value={payForm.remainingReason} onChange={(e) => setPayForm({ ...payForm, remainingReason: e.target.value })} />
+                  </div>
+                </>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button className="btn btn-primary" onClick={handleSaveStudentPayment} style={{ flex: 1 }}>حفظ الدفع</button>
+                <button className="btn btn-ghost" onClick={() => setShowPayModal(false)}>إلغاء</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPdf && selectedStaff && (
+        <PDFReport 
+          title={`تقرير ${labelSingle}: ${selectedStaff.name}`} 
+          subtitle={`المادة: ${selectedStaff.subjectName} | القاعة: ${selectedStaff.roomName}`}
+          onClose={() => setShowPdf(false)}
+        >
+          <div style={{ marginBottom: 24 }}>
+             <h3 style={{ borderBottom: '1px solid #ccc', paddingBottom: 8, marginBottom: 12 }}>البيانات الأساسية</h3>
+             <table style={{ width: '100%', marginBottom: 16 }}>
+               <tbody>
+                 <tr><td style={{ padding: 4, fontWeight: 'bold', width: '30%' }}>رقم الهاتف:</td><td style={{ padding: 4 }}>{selectedStaff.phone}</td></tr>
+                 <tr><td style={{ padding: 4, fontWeight: 'bold' }}>عدد الطلاب المسجلين:</td><td style={{ padding: 4 }}>{teacherStudents.length} طالب</td></tr>
+               </tbody>
+             </table>
+
+             <h3 style={{ borderBottom: '1px solid #ccc', paddingBottom: 8, marginBottom: 12 }}>الحضور والغياب</h3>
+             <p>إجمالي الحضور: {selectedStaff.presentCount} يوم</p>
+
+             {isAdmin && (
+               <>
+                 <h3 style={{ borderBottom: '1px solid #ccc', paddingBottom: 8, marginBottom: 12, marginTop: 24 }}>النسب المالية والحسابات</h3>
+                 <p>نسبة أرباح {labelSingle}: {selectedStaff.teacherPercentage}%</p>
+                 <p>نسبة أرباح الأكاديمية: {selectedStaff.academyPercentage}%</p>
+                 <p>الرصيد المالي الحالي: <strong style={{ color: selectedStaff.balance < 0 ? 'red' : 'green' }}>{selectedStaff.balance} ج.م</strong></p>
+               </>
+             )}
+          </div>
+        </PDFReport>
       )}
 
       {toast && <div className={`toast toast-${toast.type}`}>{toast.msg}</div>}

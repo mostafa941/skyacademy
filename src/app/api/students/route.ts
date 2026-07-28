@@ -111,6 +111,8 @@ export async function POST(req: NextRequest) {
       paymentReason: 'مصاريف الدرس',
     });
 
+    // Removed notification
+
     return NextResponse.json({ success: true, student });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

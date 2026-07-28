@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import PDFReport from '../PDFReport';
 
 interface OverviewProps {
   userRole: string;
@@ -10,6 +11,7 @@ interface OverviewProps {
 export default function OverviewSection({ userRole, onNavigate }: OverviewProps) {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [showPdf, setShowPdf] = useState(false);
 
   useEffect(() => {
     async function loadStats() {
@@ -62,6 +64,7 @@ export default function OverviewSection({ userRole, onNavigate }: OverviewProps)
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
             <h3 style={{ fontWeight: 800, fontSize: 18, color: 'var(--text-primary)' }}>💰 الحسابات والمكاسب</h3>
             <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-primary btn-sm" onClick={() => setShowPdf(true)}>📄 تصدير التقرير المالي</button>
               <button className="btn btn-ghost btn-sm" onClick={() => onNavigate('income')}>تفاصيل الدخل ←</button>
               <button className="btn btn-ghost btn-sm" onClick={() => onNavigate('expenses')}>تفاصيل الخرج ←</button>
             </div>
@@ -69,21 +72,21 @@ export default function OverviewSection({ userRole, onNavigate }: OverviewProps)
 
           {/* Daily Financial Summary */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 20 }}>
-            <div style={{ background: 'var(--success-muted)', borderRadius: 'var(--radius-md)', padding: 18, border: '1px solid rgba(34, 197, 94, 0.2)' }}>
+            <div onClick={() => onNavigate('income')} style={{ cursor: 'pointer', background: 'var(--success-muted)', borderRadius: 'var(--radius-md)', padding: 18, border: '1px solid rgba(34, 197, 94, 0.2)' }}>
               <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4, fontWeight: 600 }}>☀️ دخل اليوم</div>
               <div style={{ fontSize: 26, fontWeight: 900, color: 'var(--success)' }}>
                 {f.todayIncome?.toLocaleString('ar-EG') || 0} ج.م
               </div>
             </div>
 
-            <div style={{ background: 'var(--error-muted)', borderRadius: 'var(--radius-md)', padding: 18, border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+            <div onClick={() => onNavigate('expenses')} style={{ cursor: 'pointer', background: 'var(--error-muted)', borderRadius: 'var(--radius-md)', padding: 18, border: '1px solid rgba(239, 68, 68, 0.2)' }}>
               <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4, fontWeight: 600 }}>☀️ خرج اليوم</div>
               <div style={{ fontSize: 26, fontWeight: 900, color: 'var(--error)' }}>
                 {f.todayExpenses?.toLocaleString('ar-EG') || 0} ج.م
               </div>
             </div>
 
-            <div style={{ background: 'var(--accent-orange-muted)', borderRadius: 'var(--radius-md)', padding: 18, border: '1px solid var(--accent-orange-border)' }}>
+            <div onClick={() => onNavigate('income')} style={{ cursor: 'pointer', background: 'var(--accent-orange-muted)', borderRadius: 'var(--radius-md)', padding: 18, border: '1px solid var(--accent-orange-border)' }}>
               <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4, fontWeight: 600 }}>✨ مكسب اليوم</div>
               <div style={{ fontSize: 26, fontWeight: 900, color: 'var(--accent-orange)' }}>
                 {f.netToday?.toLocaleString('ar-EG') || 0} ج.م
@@ -93,25 +96,25 @@ export default function OverviewSection({ userRole, onNavigate }: OverviewProps)
 
           {/* Monthly & Total Summary */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
-            <div style={{ background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', padding: 14 }}>
+            <div onClick={() => onNavigate('income')} style={{ cursor: 'pointer', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', padding: 14 }}>
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>دخل الشهر ({f.month})</span>
               <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--success)', marginTop: 4 }}>
                 {f.monthIncome?.toLocaleString('ar-EG') || 0} ج.م
               </div>
             </div>
-            <div style={{ background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', padding: 14 }}>
+            <div onClick={() => onNavigate('expenses')} style={{ cursor: 'pointer', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', padding: 14 }}>
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>خرج الشهر ({f.month})</span>
               <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--error)', marginTop: 4 }}>
                 {f.monthExpenses?.toLocaleString('ar-EG') || 0} ج.م
               </div>
             </div>
-            <div style={{ background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', padding: 14 }}>
+            <div onClick={() => onNavigate('income')} style={{ cursor: 'pointer', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', padding: 14 }}>
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>صافي ربح الشهر</span>
               <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--accent-gold)', marginTop: 4 }}>
                 {f.netMonth?.toLocaleString('ar-EG') || 0} ج.م
               </div>
             </div>
-            <div style={{ background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', padding: 14 }}>
+            <div onClick={() => onNavigate('income')} style={{ cursor: 'pointer', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', padding: 14 }}>
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>إجمالي صافي الأرباح</span>
               <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)', marginTop: 4 }}>
                 {f.netProfit?.toLocaleString('ar-EG') || 0} ج.م
@@ -192,6 +195,41 @@ export default function OverviewSection({ userRole, onNavigate }: OverviewProps)
           </p>
         </div>
       </div>
+
+      {showPdf && isAdmin && stats && (
+        <PDFReport 
+          title="التقرير المالي الشامل للأكاديمية" 
+          subtitle={`لشهر ${stats.finance?.month}`}
+          onClose={() => setShowPdf(false)}
+        >
+          <div style={{ marginBottom: 24 }}>
+             <h3 style={{ borderBottom: '1px solid #ccc', paddingBottom: 8, marginBottom: 12 }}>ملخص إحصائيات الأكاديمية</h3>
+             <table style={{ width: '100%', marginBottom: 24, borderCollapse: 'collapse' }}>
+               <tbody>
+                 <tr><td style={{ border: '1px solid #ddd', padding: 8, fontWeight: 'bold', width: '40%' }}>إجمالي الطلاب:</td><td style={{ border: '1px solid #ddd', padding: 8 }}>{stats.totalStudents}</td></tr>
+                 <tr><td style={{ border: '1px solid #ddd', padding: 8, fontWeight: 'bold' }}>إجمالي المدرسين والمدربين:</td><td style={{ border: '1px solid #ddd', padding: 8 }}>{stats.totalTeachers + stats.totalTrainers}</td></tr>
+                 <tr><td style={{ border: '1px solid #ddd', padding: 8, fontWeight: 'bold' }}>نسبة حضور الطلاب:</td><td style={{ border: '1px solid #ddd', padding: 8 }}>{stats.attendance?.rate || 100}%</td></tr>
+               </tbody>
+             </table>
+
+             <h3 style={{ borderBottom: '1px solid #ccc', paddingBottom: 8, marginBottom: 12 }}>الحسابات المالية (لشهر {stats.finance?.month})</h3>
+             <table style={{ width: '100%', marginBottom: 24, borderCollapse: 'collapse' }}>
+               <tbody>
+                 <tr><td style={{ border: '1px solid #ddd', padding: 8, fontWeight: 'bold', width: '40%' }}>إجمالي الدخل:</td><td style={{ border: '1px solid #ddd', padding: 8, color: 'green' }}>{stats.finance?.monthIncome?.toLocaleString('ar-EG')} ج.م</td></tr>
+                 <tr><td style={{ border: '1px solid #ddd', padding: 8, fontWeight: 'bold' }}>إجمالي الخرج والمصروفات:</td><td style={{ border: '1px solid #ddd', padding: 8, color: 'red' }}>{stats.finance?.monthExpenses?.toLocaleString('ar-EG')} ج.م</td></tr>
+                 <tr style={{ background: '#f5f5f5' }}><td style={{ border: '1px solid #ddd', padding: 8, fontWeight: 'bold', fontSize: '18px' }}>صافي ربح الشهر:</td><td style={{ border: '1px solid #ddd', padding: 8, fontWeight: 'bold', fontSize: '18px' }}>{stats.finance?.netMonth?.toLocaleString('ar-EG')} ج.م</td></tr>
+               </tbody>
+             </table>
+
+             <h3 style={{ borderBottom: '1px solid #ccc', paddingBottom: 8, marginBottom: 12 }}>إجمالي الحسابات الشاملة (All-Time)</h3>
+             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+               <tbody>
+                 <tr style={{ background: '#f5f5f5' }}><td style={{ border: '1px solid #ddd', padding: 8, fontWeight: 'bold', width: '40%', fontSize: '18px' }}>إجمالي صافي الأرباح الكلي:</td><td style={{ border: '1px solid #ddd', padding: 8, fontWeight: 'bold', fontSize: '18px' }}>{stats.finance?.netProfit?.toLocaleString('ar-EG')} ج.م</td></tr>
+               </tbody>
+             </table>
+          </div>
+        </PDFReport>
+      )}
     </div>
   );
 }

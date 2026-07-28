@@ -28,11 +28,13 @@ export default function ExpensesSection({ userRole }: ExpensesSectionProps) {
   const [teachers, setTeachers] = useState<TeacherOption[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Modals
+  const [viewType, setViewType] = useState<'daily' | 'monthly'>('daily');
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().substring(0, 10));
+  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7));
+
   const [showAddModal, setShowAddModal] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
-  // Form
   const [form, setForm] = useState({
     amount: 100,
     date: new Date().toISOString().substring(0, 10),
@@ -49,7 +51,11 @@ export default function ExpensesSection({ userRole }: ExpensesSectionProps) {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [resExp, resTe] = await Promise.all([fetch('/api/expenses'), fetch('/api/teachers')]);
+      const queryParam = viewType === 'daily' ? `date=${selectedDate}` : `month=${selectedMonth}`;
+      const [resExp, resTe] = await Promise.all([
+        fetch(`/api/expenses?${queryParam}`),
+        fetch('/api/teachers'),
+      ]);
       if (resExp.ok) {
         const d = await resExp.json();
         setExpenses(d.expenses || []);
@@ -63,19 +69,17 @@ export default function ExpensesSection({ userRole }: ExpensesSectionProps) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [viewType, selectedDate, selectedMonth]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // Save Expense
   const handleSaveExpense = async () => {
     if (!form.amount || !form.reason) {
       showToast('يرجى كِتابة المبلغ وسبب الخرج', 'error');
       return;
     }
-
     try {
       const res = await fetch('/api/expenses', {
         method: 'POST',
@@ -96,7 +100,6 @@ export default function ExpensesSection({ userRole }: ExpensesSectionProps) {
     }
   };
 
-  // Delete Expense (Admin only)
   const handleDeleteExpense = async (id: string) => {
     if (!confirm('هل أنت تأكد من حذف هذا المصروف؟')) return;
     try {
@@ -114,7 +117,7 @@ export default function ExpensesSection({ userRole }: ExpensesSectionProps) {
   };
 
   const isAdmin = userRole === 'admin';
-  const totalExpensesAllTime = expenses.reduce((sum, item) => sum + item.amount, 0);
+  const totalExpenses = expenses.reduce((sum, item) => sum + item.amount, 0);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -122,27 +125,56 @@ export default function ExpensesSection({ userRole }: ExpensesSectionProps) {
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 className="page-title" style={{ fontSize: 'clamp(20px, 4vw, 26px)', fontWeight: 800 }}>📤 الخرج والمصروفات</h1>
-          <p className="page-subtitle" style={{ fontSize: 14, color: 'var(--text-secondary)' }}>تسجيل ومتابعة مصروفات الأكاديمية وسلف المدرسين والمدربين</p>
+          <p className="page-subtitle" style={{ fontSize: 14, color: 'var(--text-secondary)' }}>تسجيل ومتابعة مصروفات الأكاديمية وسلف المدرسين (يومي / شهري)</p>
         </div>
         <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
           + تسجيل خرج جديد
         </button>
       </div>
 
-      {/* Summary Card */}
-      <div className="card" style={{ background: 'var(--error-muted)', border: '1px solid rgba(239, 68, 68, 0.3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
-        <div>
-          <div style={{ fontSize: 14, color: 'var(--text-secondary)', fontWeight: 600 }}>إجمالي الخرج والمصروفات المسجلة</div>
-          <div style={{ fontSize: 32, fontWeight: 900, color: 'var(--error)' }}>
-            {totalExpensesAllTime.toLocaleString('ar-EG')} جنيه
-          </div>
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 10, borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
+        <button
+          className={`btn ${viewType === 'daily' ? 'btn-primary' : 'btn-ghost'}`}
+          onClick={() => setViewType('daily')}
+        >
+          الخرج اليومي
+        </button>
+        <button
+          className={`btn ${viewType === 'monthly' ? 'btn-primary' : 'btn-ghost'}`}
+          onClick={() => setViewType('monthly')}
+        >
+          الخرج الشهري
+        </button>
+      </div>
+
+      {/* Filter & Summary */}
+      <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, background: 'var(--error-muted)', border: '1px solid rgba(239,68,68,0.3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {viewType === 'daily' ? (
+            <div className="input-group" style={{ marginBottom: 0 }}>
+              <label className="input-label">بحث بيوم معين:</label>
+              <input className="input" type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
+            </div>
+          ) : (
+            <div className="input-group" style={{ marginBottom: 0 }}>
+              <label className="input-label">بحث بشهر معين:</label>
+              <input className="input" type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} />
+            </div>
+          )}
         </div>
-        <div className="badge badge-danger" style={{ fontSize: 14, padding: '8px 16px' }}>
-          عدد المصروفات: {expenses.length}
+        <div style={{ textAlign: 'left' }}>
+          <div style={{ fontSize: 14, color: 'var(--text-secondary)', fontWeight: 600 }}>
+            إجمالي الخرج للـ{viewType === 'daily' ? 'يوم' : 'شهر'}
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 900, color: 'var(--error)' }}>
+            {totalExpenses.toLocaleString('ar-EG')} جنيه
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>عدد المصروفات: {expenses.length}</div>
         </div>
       </div>
 
-      {/* Expenses Table */}
+      {/* Table */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: '40px 0' }}>
           <div className="spinner" style={{ width: 36, height: 36, margin: '0 auto 12px' }} />
@@ -151,7 +183,7 @@ export default function ExpensesSection({ userRole }: ExpensesSectionProps) {
       ) : expenses.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-icon">📤</div>
-          <p className="empty-state-text">لا يوجد مصروفات مسجلة بعد</p>
+          <p className="empty-state-text">لا يوجد مصروفات مسجلة في هذه الفترة</p>
         </div>
       ) : (
         <div className="table-wrapper">
@@ -202,7 +234,7 @@ export default function ExpensesSection({ userRole }: ExpensesSectionProps) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div className="input-group">
                 <label className="input-label">نوع المصروف *</label>
-                <select className="input" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as any })}>
+                <select className="input" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as 'general' | 'teacher_loan' })}>
                   <option value="general">مصروف عام (كهرباء، مياه، إيجار...)</option>
                   <option value="teacher_loan">سلفة لمدرس أو مدرب 💸</option>
                 </select>
@@ -224,12 +256,10 @@ export default function ExpensesSection({ userRole }: ExpensesSectionProps) {
                 <label className="input-label">المبلغ (ج.م) *</label>
                 <input className="input" type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: +e.target.value })} />
               </div>
-
               <div className="input-group">
                 <label className="input-label">التاريخ *</label>
                 <input className="input" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
               </div>
-
               <div className="input-group">
                 <label className="input-label">السبب والوصف *</label>
                 <input className="input" placeholder="مثال: إيجار القاعة، فاتورة الكهرباء..." value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} />
