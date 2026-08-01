@@ -8,6 +8,7 @@ export interface ITeacher extends Document {
   phone: string;
   type: StaffType;
   subjectName: string;
+  grades: string[];
   room?: mongoose.Types.ObjectId;
   teacherPercentage: number;
   academyPercentage: number;
@@ -39,6 +40,10 @@ const TeacherSchema = new Schema<ITeacher>(
       type: String,
       required: true,
       trim: true,
+    },
+    grades: {
+      type: [String],
+      default: [],
     },
     room: {
       type: Schema.Types.ObjectId,

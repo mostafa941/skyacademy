@@ -24,6 +24,7 @@ interface Student {
   totalAttendance: number;
   presentCount: number;
   absentCount: number;
+  type?: 'student' | 'trainee';
 }
 
 interface Teacher {
@@ -53,6 +54,9 @@ export default function StudentsSection() {
   // Toast
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
+  const [activeTab, setActiveTab] = useState<'student' | 'trainee'>('student');
+  const [selectedStage, setSelectedStage] = useState<'primary' | 'prep' | 'secondary'>('secondary');
+
   // Forms
   const [studentForm, setStudentForm] = useState({
     id: '',
@@ -64,7 +68,20 @@ export default function StudentsSection() {
     grade: 'الصف الأول الثانوي',
     monthlyFee: 300,
     notes: '',
+    type: 'student' as 'student' | 'trainee',
   });
+
+  useEffect(() => {
+    if (studentForm.grade) {
+      if (studentForm.grade.includes('الابتدائي')) {
+        setSelectedStage('primary');
+      } else if (studentForm.grade.includes('الإعدادي')) {
+        setSelectedStage('prep');
+      } else if (studentForm.grade.includes('الثانوي')) {
+        setSelectedStage('secondary');
+      }
+    }
+  }, [studentForm.grade, showAddModal]);
 
   const [gradeForm, setGradeForm] = useState({ title: '', score: 100, maxScore: 100 });
   const [payForm, setPayForm] = useState({
@@ -148,7 +165,7 @@ export default function StudentsSection() {
       if (res.ok) {
         showToast(studentForm.id ? 'تم تعديل بيانات الطالب' : 'تم إضافة الطالب بنجاح');
         setShowAddModal(false);
-        setStudentForm({ id: '', name: '', phone: '', parentPhone: '', subjectName: '', teacherId: '', grade: 'الصف الأول الثانوي', monthlyFee: 300, notes: '' });
+        setStudentForm({ id: '', name: '', phone: '', parentPhone: '', subjectName: '', teacherId: '', grade: 'الصف الأول الثانوي', monthlyFee: 300, notes: '', type: activeTab });
         refreshList();
       } else {
         showToast(data.error || 'حدث خطأ', 'error');
@@ -278,27 +295,67 @@ export default function StudentsSection() {
     window.open(url, '_blank');
   };
 
+  const uniqueSubjects = Array.from(
+    new Set(
+      teachers
+        .filter(t => t.type === (studentForm.type === 'trainee' ? 'trainer' : 'teacher'))
+        .map(t => t.subjectName)
+    )
+  );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Dynamic Header based on view */}
       {currentView === 'list' ? (
         <>
+          {/* Header */}
           <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
             <div>
-              <h1 className="page-title" style={{ fontSize: 'clamp(20px, 4vw, 26px)', fontWeight: 800 }}>🎓 إدارة الطلاب</h1>
-              <p className="page-subtitle" style={{ fontSize: 14, color: 'var(--text-secondary)' }}>قائمة الطلاب، التقارير الشاملة، والواتساب</p>
+              <h1 className="page-title" style={{ fontSize: 'clamp(20px, 4vw, 26px)', fontWeight: 800 }}>
+                {activeTab === 'student' ? '🎓 إدارة الطلاب التعليميين' : '🏋️ إدارة المتدربين الرياضيين'}
+              </h1>
+              <p className="page-subtitle" style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
+                {activeTab === 'student' ? 'متابعة قائمة الطلاب، المدفوعات، والصفوف الدراسية' : 'متابعة المتدربين، المدفوعات، والمدربين الرياضيين'}
+              </p>
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <a href="/api/students/export" download className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 📥 تصدير شيت Excel
               </a>
               <button className="btn btn-primary" onClick={() => {
-                setStudentForm({ id: '', name: '', phone: '', parentPhone: '', subjectName: '', teacherId: '', grade: 'الصف الأول الثانوي', monthlyFee: 300, notes: '' });
+                setStudentForm({
+                  id: '',
+                  name: '',
+                  phone: '',
+                  parentPhone: '',
+                  subjectName: '',
+                  teacherId: '',
+                  grade: activeTab === 'trainee' ? 'متدرب' : 'الصف الأول الثانوي',
+                  monthlyFee: 300,
+                  notes: '',
+                  type: activeTab,
+                });
                 setShowAddModal(true);
               }}>
-                + إضافة طالب جديد
+                {activeTab === 'student' ? '+ إضافة طالب جديد' : '+ إضافة متدرب جديد'}
               </button>
             </div>
+          </div>
+
+          {/* Student/Trainee Tabs */}
+          <div style={{ display: 'flex', gap: 10, borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
+            <button
+              className={`btn ${activeTab === 'student' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setActiveTab('student')}
+            >
+              🎓 قائمة الطلاب
+            </button>
+            <button
+              className={`btn ${activeTab === 'trainee' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setActiveTab('trainee')}
+            >
+              🏋️ قائمة المتدربين
+            </button>
           </div>
 
           <div className="card" style={{ padding: 16 }}>
@@ -315,19 +372,19 @@ export default function StudentsSection() {
               <div className="spinner" style={{ width: 36, height: 36, margin: '0 auto 12px' }} />
               <p style={{ color: 'var(--text-secondary)' }}>جاري التحميل...</p>
             </div>
-          ) : students.length === 0 ? (
+          ) : students.filter(st => (st.type || 'student') === activeTab).length === 0 ? (
             <div className="empty-state">
-              <div className="empty-state-icon">🎓</div>
-              <p className="empty-state-text">لا يوجد طلاب مسجلين</p>
+              <div className="empty-state-icon">{activeTab === 'student' ? '🎓' : '🏋️'}</div>
+              <p className="empty-state-text">{activeTab === 'student' ? 'لا يوجد طلاب مسجلين بعد' : 'لا يوجد متدربين مسجلين بعد'}</p>
             </div>
           ) : (
             <div className="table-wrapper">
               <table>
                 <thead>
                   <tr>
-                    <th>اسم الطالب</th>
-                    <th>المادة والمدرس</th>
-                    <th>رقم الطالب</th>
+                    <th>{activeTab === 'student' ? 'اسم الطالب' : 'اسم المتدرب'}</th>
+                    <th>{activeTab === 'student' ? 'المادة والمدرس' : 'التخصص والمدرب'}</th>
+                    <th>{activeTab === 'student' ? 'رقم الطالب' : 'رقم المتدرب'}</th>
                     <th>رقم الوالد (واتس)</th>
                     <th>حالة الدفع</th>
                     <th>الحضور والغياب</th>
@@ -335,15 +392,17 @@ export default function StudentsSection() {
                   </tr>
                 </thead>
                 <tbody>
-                  {students.map((st) => (
+                  {students.filter(st => (st.type || 'student') === activeTab).map((st) => (
                     <tr key={st.id} style={{ cursor: 'pointer' }} onClick={() => { setSelectedStudent(st); setCurrentView('profile'); }}>
                       <td style={{ fontWeight: 700 }}>
                         <div style={{ color: 'var(--text-primary)' }}>{st.name}</div>
-                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{st.grade}</div>
+                        {st.type !== 'trainee' && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{st.grade}</div>}
                       </td>
                       <td>
                         <div style={{ fontWeight: 600, color: 'var(--accent-orange)' }}>{st.subjectName}</div>
-                        <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>👨‍🏫 {st.teacherName}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                          {st.type === 'trainee' ? `🏋️ ${st.teacherName}` : `👨‍🏫 ${st.teacherName}`}
+                        </div>
                       </td>
                       <td dir="ltr" style={{ textAlign: 'right' }}>{st.phone}</td>
                       <td dir="ltr" style={{ textAlign: 'right' }}>{st.parentPhone}</td>
@@ -378,51 +437,56 @@ export default function StudentsSection() {
         /* ================== PROFILE VIEW ================== */
         selectedStudent && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24, animation: 'fadeIn 0.3s ease' }}>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-              <button className="btn btn-secondary btn-icon" onClick={() => { setCurrentView('list'); setSelectedStudent(null); }}>
-                ←
-              </button>
-              <div>
-                <h1 className="page-title" style={{ fontSize: 'clamp(20px, 4vw, 26px)', fontWeight: 800 }}>ملف الطالب: {selectedStudent.name}</h1>
-                <p className="page-subtitle" style={{ fontSize: 14, color: 'var(--text-secondary)' }}>{selectedStudent.grade} — مادة: {selectedStudent.subjectName}</p>
-              </div>
-              <div style={{ marginRight: 'auto', display: 'flex', gap: 8 }}>
-                <button className="btn btn-primary" onClick={() => handleSendWhatsApp(selectedStudent)} style={{ background: '#25D366', borderColor: '#25D366' }}>
-                  💬 واتس اب
-                </button>
-                <button className="btn btn-secondary" onClick={() => setShowPdf(true)}>
-                  📄 تصدير PDF
-                </button>
-                <button className="btn btn-secondary" onClick={() => {
-                  setStudentForm({
-                    id: selectedStudent.id,
-                    name: selectedStudent.name,
-                    phone: selectedStudent.phone,
-                    parentPhone: selectedStudent.parentPhone,
-                    subjectName: selectedStudent.subjectName,
-                    teacherId: selectedStudent.teacherId,
-                    grade: selectedStudent.grade,
-                    monthlyFee: selectedStudent.monthlyFee,
-                    notes: selectedStudent.notes,
-                  });
-                  setShowAddModal(true);
-                }}>
-                  ✏️ تعديل
-                </button>
-                <button className="btn btn-ghost" style={{ color: 'var(--error)' }} onClick={() => handleDeleteStudent(selectedStudent.id)}>
-                  🗑️
-                </button>
-              </div>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <button className="btn btn-secondary btn-icon" onClick={() => { setCurrentView('list'); setSelectedStudent(null); }}>
+              ←
+            </button>
+            <div>
+              <h1 className="page-title" style={{ fontSize: 'clamp(20px, 4vw, 26px)', fontWeight: 800 }}>
+                {selectedStudent.type === 'trainee' ? '🏋️ ملف المتدرب' : '🎓 ملف الطالب'}: {selectedStudent.name}
+              </h1>
+              <p className="page-subtitle" style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
+                {selectedStudent.type === 'trainee' ? `متدرب رياضي — التخصص: ${selectedStudent.subjectName}` : `${selectedStudent.grade} — مادة: ${selectedStudent.subjectName}`}
+              </p>
             </div>
+            <div style={{ marginRight: 'auto', display: 'flex', gap: 8 }}>
+              <button className="btn btn-primary" onClick={() => handleSendWhatsApp(selectedStudent)} style={{ background: '#25D366', borderColor: '#25D366' }}>
+                💬 واتس اب
+              </button>
+              <button className="btn btn-secondary" onClick={() => setShowPdf(true)}>
+                📄 تصدير PDF
+              </button>
+              <button className="btn btn-secondary" onClick={() => {
+                setStudentForm({
+                  id: selectedStudent.id,
+                  name: selectedStudent.name,
+                  phone: selectedStudent.phone,
+                  parentPhone: selectedStudent.parentPhone,
+                  subjectName: selectedStudent.subjectName,
+                  teacherId: selectedStudent.teacherId,
+                  grade: selectedStudent.grade,
+                  monthlyFee: selectedStudent.monthlyFee,
+                  notes: selectedStudent.notes,
+                  type: selectedStudent.type || 'student',
+                });
+                setShowAddModal(true);
+              }}>
+                ✏️ تعديل
+              </button>
+              <button className="btn btn-ghost" style={{ color: 'var(--error)' }} onClick={() => handleDeleteStudent(selectedStudent.id)}>
+                🗑️
+              </button>
+            </div>
+          </div>
 
-            <div className="grid-2">
-              {/* Basic Info */}
-              <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                <h3 style={{ fontSize: 18, fontWeight: 700, borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>البيانات الأساسية</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div><span style={{ color: 'var(--text-muted)', fontSize: 13 }}>رقم الطالب:</span> <div dir="ltr" style={{ textAlign: 'right', fontWeight: 600 }}>{selectedStudent.phone}</div></div>
-                  <div><span style={{ color: 'var(--text-muted)', fontSize: 13 }}>رقم الوالد:</span> <div dir="ltr" style={{ textAlign: 'right', fontWeight: 600 }}>{selectedStudent.parentPhone}</div></div>
-                  <div><span style={{ color: 'var(--text-muted)', fontSize: 13 }}>المدرس:</span> <div style={{ fontWeight: 600 }}>{selectedStudent.teacherName}</div></div>
+          <div className="grid-2">
+            {/* Basic Info */}
+            <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 700, borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>البيانات الأساسية</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div><span style={{ color: 'var(--text-muted)', fontSize: 13 }}>{selectedStudent.type === 'trainee' ? 'رقم المتدرب:' : 'رقم الطالب:'}</span> <div dir="ltr" style={{ textAlign: 'right', fontWeight: 600 }}>{selectedStudent.phone}</div></div>
+                <div><span style={{ color: 'var(--text-muted)', fontSize: 13 }}>رقم الوالد:</span> <div dir="ltr" style={{ textAlign: 'right', fontWeight: 600 }}>{selectedStudent.parentPhone}</div></div>
+                <div><span style={{ color: 'var(--text-muted)', fontSize: 13 }}>{selectedStudent.type === 'trainee' ? 'المدرب:' : 'المدرس:'}</span> <div style={{ fontWeight: 600 }}>{selectedStudent.teacherName}</div></div>
                   <div><span style={{ color: 'var(--text-muted)', fontSize: 13 }}>المصروف الافتراضي:</span> <div style={{ fontWeight: 600, color: 'var(--accent-orange)' }}>{selectedStudent.monthlyFee} ج.م</div></div>
                 </div>
                 <div>
@@ -512,16 +576,41 @@ export default function StudentsSection() {
         <div className="modal-backdrop" onClick={() => setShowAddModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 500 }}>
             <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16 }}>
-              {studentForm.id ? '✏️ تعديل بيانات الطالب' : '🎓 إضافة طالب جديد'}
+              {studentForm.id
+                ? (studentForm.type === 'trainee' ? '✏️ تعديل بيانات المتدرب' : '✏️ تعديل بيانات الطالب')
+                : (activeTab === 'trainee' ? '🏋️ إضافة متدرب جديد' : '🎓 إضافة طالب جديد')
+              }
             </h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div className="input-group">
-                <label className="input-label">اسم الطالب كامل *</label>
-                <input className="input" placeholder="مثال: أحمد محمد علي" value={studentForm.name} onChange={(e) => setStudentForm({ ...studentForm, name: e.target.value })} />
-              </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div className="input-group">
-                  <label className="input-label">رقم هاتف الطالب *</label>
+                  <label className="input-label">نوع التسجيل *</label>
+                  <select
+                    className="input"
+                    value={studentForm.type}
+                    onChange={(e) => {
+                      const newType = e.target.value as 'student' | 'trainee';
+                      setStudentForm({
+                        ...studentForm,
+                        type: newType,
+                        grade: newType === 'trainee' ? 'متدرب' : 'الصف الأول الثانوي',
+                        teacherId: '',
+                      });
+                    }}
+                  >
+                    <option value="student">طالب تعليمي 🎓</option>
+                    <option value="trainee">متدرب رياضي 🏋️</option>
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label className="input-label">{studentForm.type === 'trainee' ? 'اسم المتدرب كامل *' : 'اسم الطالب كامل *'}</label>
+                  <input className="input" placeholder="مثال: أحمد محمد علي" value={studentForm.name} onChange={(e) => setStudentForm({ ...studentForm, name: e.target.value })} />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="input-group">
+                  <label className="input-label">{studentForm.type === 'trainee' ? 'رقم هاتف المتدرب *' : 'رقم هاتف الطالب *'}</label>
                   <input className="input" placeholder="01xxxxxxxxx" value={studentForm.phone} onChange={(e) => setStudentForm({ ...studentForm, phone: e.target.value })} />
                 </div>
                 <div className="input-group">
@@ -529,34 +618,100 @@ export default function StudentsSection() {
                   <input className="input" placeholder="01xxxxxxxxx" value={studentForm.parentPhone} onChange={(e) => setStudentForm({ ...studentForm, parentPhone: e.target.value })} />
                 </div>
               </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div className="input-group">
-                  <label className="input-label">المادة الدراسية *</label>
-                  <input className="input" placeholder="مثال: رياضيات، فيزياء..." value={studentForm.subjectName} onChange={(e) => setStudentForm({ ...studentForm, subjectName: e.target.value })} />
-                </div>
-                <div className="input-group">
-                  <label className="input-label">المدرس المسؤول</label>
-                  <select className="input" value={studentForm.teacherId} onChange={(e) => setStudentForm({ ...studentForm, teacherId: e.target.value })}>
-                    <option value="">اختر المدرس...</option>
-                    {teachers.map((t) => (
-                      <option key={t.id} value={t.id}>{t.name} ({t.subjectName})</option>
+                  <label className="input-label">{studentForm.type === 'trainee' ? 'التخصص الرياضي / التدريب *' : 'المادة الدراسية *'}</label>
+                  <select 
+                    className="input" 
+                    value={studentForm.subjectName} 
+                    onChange={(e) => setStudentForm({ ...studentForm, subjectName: e.target.value })}
+                  >
+                    <option value="">{studentForm.type === 'trainee' ? 'اختر التدريب...' : 'اختر المادة...'}</option>
+                    {uniqueSubjects.map(sub => (
+                      <option key={sub} value={sub}>{sub}</option>
                     ))}
                   </select>
                 </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div className="input-group">
-                  <label className="input-label">الصف الدراسي *</label>
-                  <input className="input" placeholder="مثال: الصف الأول الثانوي" value={studentForm.grade} onChange={(e) => setStudentForm({ ...studentForm, grade: e.target.value })} />
+                  <label className="input-label">{studentForm.type === 'trainee' ? 'المدرب المسؤول *' : 'المدرس المسؤول *'}</label>
+                  <select className="input" value={studentForm.teacherId} onChange={(e) => setStudentForm({ ...studentForm, teacherId: e.target.value })}>
+                    <option value="">{studentForm.type === 'trainee' ? 'اختر المدرب...' : 'اختر المدرس...'}</option>
+                    {teachers
+                      .filter((t) => t.type === (studentForm.type === 'trainee' ? 'trainer' : 'teacher'))
+                      .map((t) => (
+                        <option key={t.id} value={t.id}>{t.name} ({t.subjectName})</option>
+                      ))}
+                  </select>
                 </div>
-                <div className="input-group">
-                  <label className="input-label">المصروف الافتراضي (ج.م)</label>
+              </div>
+
+              {studentForm.type === 'student' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="input-group">
+                    <label className="input-label">المرحلة الدراسية *</label>
+                    <select
+                      className="input"
+                      value={selectedStage}
+                      onChange={(e) => {
+                        const stage = e.target.value as 'primary' | 'prep' | 'secondary';
+                        setSelectedStage(stage);
+                        if (stage === 'primary') setStudentForm({ ...studentForm, grade: 'الصف الأول الابتدائي' });
+                        else if (stage === 'prep') setStudentForm({ ...studentForm, grade: 'الصف الأول الإعدادي' });
+                        else if (stage === 'secondary') setStudentForm({ ...studentForm, grade: 'الصف الأول الثانوي' });
+                      }}
+                    >
+                      <option value="primary">ابتدائي 🎒</option>
+                      <option value="prep">إعدادي 🏫</option>
+                      <option value="secondary">ثانوي 🎓</option>
+                    </select>
+                  </div>
+                  <div className="input-group">
+                    <label className="input-label">الصف الدراسي *</label>
+                    <select
+                      className="input"
+                      value={studentForm.grade}
+                      onChange={(e) => setStudentForm({ ...studentForm, grade: e.target.value })}
+                    >
+                      {selectedStage === 'primary' && (
+                        <>
+                          <option value="الصف الأول الابتدائي">أولى ابتدائي</option>
+                          <option value="الصف الثاني الابتدائي">تانية ابتدائي</option>
+                          <option value="الصف الثالث الابتدائي">تالتة ابتدائي</option>
+                          <option value="الصف الرابع الابتدائي">رابعة ابتدائي</option>
+                          <option value="الصف الخامس الابتدائي">خامسة ابتدائي</option>
+                          <option value="الصف السادس الابتدائي">سادسة ابتدائي</option>
+                        </>
+                      )}
+                      {selectedStage === 'prep' && (
+                        <>
+                          <option value="الصف الأول الإعدادي">أولى إعدادي</option>
+                          <option value="الصف الثاني الإعدادي">تانية إعدادي</option>
+                          <option value="الصف الثالث الإعدادي">تالتة إعدادي</option>
+                        </>
+                      )}
+                      {selectedStage === 'secondary' && (
+                        <>
+                          <option value="الصف الأول الثانوي">أولى ثانوي</option>
+                          <option value="الصف الثاني الثانوي">تانية ثانوي</option>
+                          <option value="الصف الثالث الثانوي">تالتة ثانوي</option>
+                        </>
+                      )}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="input-group" style={{ gridColumn: studentForm.type === 'trainee' ? 'span 2' : 'span 1' }}>
+                  <label className="input-label">الاشتراك المالي الافتراضي (ج.م)</label>
                   <input className="input" type="number" value={studentForm.monthlyFee} onChange={(e) => setStudentForm({ ...studentForm, monthlyFee: +e.target.value })} />
                 </div>
               </div>
+
               <div className="input-group">
-                <label className="input-label">ملاحظات على الطالب</label>
-                <textarea className="input" rows={2} placeholder="ملاحظات سلوكية أو تعليمية..." value={studentForm.notes} onChange={(e) => setStudentForm({ ...studentForm, notes: e.target.value })} />
+                <label className="input-label">{studentForm.type === 'trainee' ? 'ملاحظات على المتدرب' : 'ملاحظات على الطالب'}</label>
+                <textarea className="input" rows={2} placeholder="ملاحظات إضافية..." value={studentForm.notes} onChange={(e) => setStudentForm({ ...studentForm, notes: e.target.value })} />
               </div>
 
               <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>

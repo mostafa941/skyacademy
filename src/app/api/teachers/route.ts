@@ -43,6 +43,7 @@ export async function GET(req: NextRequest) {
           phone: t.phone,
           type: t.type,
           subjectName: t.subjectName,
+          grades: t.grades || [],
           roomId: (t.room as any)?._id?.toString() || '',
           roomName: (t.room as any)?.name || 'غير محددة',
           teacherPercentage: t.teacherPercentage,
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest) {
     await connectToDatabase();
 
     const body = await req.json();
-    const { name, phone, type, subjectName, roomId, teacherPercentage, academyPercentage, balance } = body;
+    const { name, phone, type, subjectName, grades, roomId, teacherPercentage, academyPercentage, balance } = body;
 
     if (!name || !phone || !subjectName) {
       return NextResponse.json({ error: 'الاسم ورقم الهاتف والمادة مطلوبة' }, { status: 400 });
@@ -83,6 +84,7 @@ export async function POST(req: NextRequest) {
       phone: phone.trim(),
       type: type === 'trainer' ? 'trainer' : 'teacher',
       subjectName: subjectName.trim(),
+      grades: grades || [],
       room: roomId || undefined,
       teacherPercentage: Number(teacherPercentage) || 50,
       academyPercentage: Number(academyPercentage) || 50,
@@ -104,7 +106,7 @@ export async function PUT(req: NextRequest) {
     await connectToDatabase();
 
     const body = await req.json();
-    const { id, name, phone, type, subjectName, roomId, teacherPercentage, academyPercentage, balance } = body;
+    const { id, name, phone, type, subjectName, grades, roomId, teacherPercentage, academyPercentage, balance } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'معرف المدرس/المدرب مطلوب' }, { status: 400 });
@@ -117,10 +119,12 @@ export async function PUT(req: NextRequest) {
         phone: phone?.trim(),
         type: type === 'trainer' ? 'trainer' : 'teacher',
         subjectName: subjectName?.trim(),
+        grades: grades || [],
         room: roomId || undefined,
         teacherPercentage: Number(teacherPercentage) ?? 50,
         academyPercentage: Number(academyPercentage) ?? 50,
-        balance: Number(balance) ?? 0,
+        // NOTE: balance is intentionally NOT updated here.
+        // Balance only changes via /api/payments (student pays) or /api/expenses (teacher loan).
       },
       { new: true }
     );

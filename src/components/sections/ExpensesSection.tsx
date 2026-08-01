@@ -34,6 +34,26 @@ export default function ExpensesSection({ userRole }: ExpensesSectionProps) {
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  
+  const [inlineExpense, setInlineExpense] = useState({ type: 'مصروف عام', details: '', amount: '', recipient: '' });
+  const [addingInline, setAddingInline] = useState(false);
+  
+  const [search, setSearch] = useState('');
+
+  const getArabicDayName = (dateStr: string | Date) => {
+    const date = new Date(dateStr);
+    const days = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+    return days[date.getDay()];
+  };
+
+  const getArabicTimeStr = (dateStr: string | Date) => {
+    const date = new Date(dateStr);
+    const hours = date.getHours();
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const period = hours >= 12 ? 'مساءً' : 'صباحاً';
+    const displayHours = (hours % 12 || 12).toString();
+    return `${displayHours}:${minutes} ${period}`;
+  };
 
   const [form, setForm] = useState({
     amount: 100,
@@ -100,6 +120,42 @@ export default function ExpensesSection({ userRole }: ExpensesSectionProps) {
     }
   };
 
+  const handleAddInlineExpense = async () => {
+    if (!inlineExpense.amount || !inlineExpense.details) {
+      showToast('يرجى كِتابة المبلغ والتفاصيل', 'error');
+      return;
+    }
+    setAddingInline(true);
+    const combinedReason = inlineExpense.recipient 
+      ? `[${inlineExpense.recipient}] - ${inlineExpense.details}`
+      : inlineExpense.details;
+      
+    try {
+      const res = await fetch('/api/expenses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: Number(inlineExpense.amount),
+          date: new Date().toISOString().substring(0, 10),
+          reason: combinedReason,
+          type: 'general', // Manual inline is usually general expense
+        }),
+      });
+      if (res.ok) {
+        showToast('تم إضافة المصروف بنجاح');
+        setInlineExpense({ type: 'مصروف عام', details: '', amount: '', recipient: '' });
+        loadData();
+      } else {
+        const data = await res.json();
+        showToast(data.error || 'حدث خطأ', 'error');
+      }
+    } catch {
+      showToast('خطأ بالخادم', 'error');
+    } finally {
+      setAddingInline(false);
+    }
+  };
+
   const handleDeleteExpense = async (id: string) => {
     if (!confirm('هل أنت تأكد من حذف هذا المصروف؟')) return;
     try {
@@ -119,13 +175,51 @@ export default function ExpensesSection({ userRole }: ExpensesSectionProps) {
   const isAdmin = userRole === 'admin';
   const totalExpenses = expenses.reduce((sum, item) => sum + item.amount, 0);
 
+  // Client-side filtering logic
+  const filteredExpenses = expenses.filter(item => {
+    if (!search.trim()) return true;
+    const query = search.toLowerCase().trim();
+    
+    const reason = item.reason || '';
+    const amountStr = item.amount.toString();
+    const typeLabel = item.type === 'teacher_loan' ? 'سلفة مدرس/مدرب' : 'مصروف عام';
+    const recipient = item.teacher ? `${item.teacher.name} (${item.teacher.subjectName})` : '';
+    
+    const dateObj = new Date((item as any).createdAt || item.date);
+    let dateStr = item.date;
+    let timeStr = '';
+    let dayName = '';
+    let dayOfMonth = '';
+    
+    if (dateObj && !isNaN(dateObj.getTime())) {
+      const year = dateObj.getFullYear();
+      const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+      const day = dateObj.getDate().toString().padStart(2, '0');
+      dateStr = `${year}-${month}-${day}`;
+      timeStr = getArabicTimeStr(dateObj);
+      dayName = getArabicDayName(dateObj);
+      dayOfMonth = dateObj.getDate().toString();
+    }
+    
+    return (
+      reason.toLowerCase().includes(query) ||
+      amountStr.includes(query) ||
+      typeLabel.includes(query) ||
+      recipient.toLowerCase().includes(query) ||
+      dateStr.includes(query) ||
+      timeStr.includes(query) ||
+      dayName.includes(query) ||
+      dayOfMonth === query
+    );
+  });
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Header */}
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 className="page-title" style={{ fontSize: 'clamp(20px, 4vw, 26px)', fontWeight: 800 }}>📤 الخرج والمصروفات</h1>
-          <p className="page-subtitle" style={{ fontSize: 14, color: 'var(--text-secondary)' }}>تسجيل ومتابعة مصروفات الأكاديمية وسلف المدرسين (يومي / شهري)</p>
+          <p className="page-subtitle" style={{ fontSize: 14, color: 'var(--text-secondary)' }}>تسجيل ومتابعة مصروفات الأكاديمية وسلف المدرسين والمدربين (يومي / شهري)</p>
         </div>
         <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
           + تسجيل خرج جديد
@@ -146,6 +240,16 @@ export default function ExpensesSection({ userRole }: ExpensesSectionProps) {
         >
           الخرج الشهري
         </button>
+      </div>
+
+      {/* Advanced Search Input */}
+      <div className="card" style={{ padding: 16 }}>
+        <input
+          className="input"
+          placeholder="🔍 ابحث بالتاريخ (YYYY-MM-DD)، الوقت (12:00)، يوم الأسبوع (الخميس)، اليوم في الشهر (30)، أو باسم المدرس/التفاصيل..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
       </div>
 
       {/* Filter & Summary */}
@@ -180,29 +284,48 @@ export default function ExpensesSection({ userRole }: ExpensesSectionProps) {
           <div className="spinner" style={{ width: 36, height: 36, margin: '0 auto 12px' }} />
           <p style={{ color: 'var(--text-secondary)' }}>جاري التحميل...</p>
         </div>
-      ) : expenses.length === 0 ? (
+      ) : filteredExpenses.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-icon">📤</div>
-          <p className="empty-state-text">لا يوجد مصروفات مسجلة في هذه الفترة</p>
+          <p className="empty-state-text">لا يوجد مصروفات مطابقة للبحث</p>
         </div>
       ) : (
         <div className="table-wrapper">
           <table>
             <thead>
               <tr>
-                <th>التاريخ</th>
-                <th>سبب الخرج / المصروف</th>
-                <th>النوع</th>
-                <th>المبلغ</th>
-                <th>المستلم / المدرس</th>
+                <th style={{ width: 40, textAlign: 'center' }}>م</th>
+                <th>نوع المصروف</th>
+                <th>البند / التفاصيل</th>
+                <th>المبلغ (EGP)</th>
+                <th>مصروف من / التاريخ</th>
                 {isAdmin && <th>حذف</th>}
               </tr>
             </thead>
             <tbody>
-              {expenses.map((item) => (
+              {/* Inline Add Row */}
+              <tr style={{ background: 'var(--bg-secondary)' }}>
+                <td style={{ textAlign: 'center', fontWeight: 'bold' }}>+</td>
+                <td>
+                  <input className="input" placeholder="نوع المصروف" style={{ padding: '6px 8px', minWidth: 100, fontSize: 13 }} value={inlineExpense.type} onChange={e => setInlineExpense({...inlineExpense, type: e.target.value})} />
+                </td>
+                <td>
+                  <input className="input" placeholder="البند / التفاصيل" style={{ padding: '6px 8px', minWidth: 150, fontSize: 13 }} value={inlineExpense.details} onChange={e => setInlineExpense({...inlineExpense, details: e.target.value})} />
+                </td>
+                <td>
+                  <input className="input" type="number" placeholder="المبلغ" style={{ padding: '6px 8px', width: 90, fontSize: 13 }} value={inlineExpense.amount} onChange={e => setInlineExpense({...inlineExpense, amount: e.target.value})} />
+                </td>
+                <td style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input className="input" placeholder="مصروف من" style={{ padding: '6px 8px', flex: 1, fontSize: 13 }} value={inlineExpense.recipient} onChange={e => setInlineExpense({...inlineExpense, recipient: e.target.value})} />
+                  <button className="btn btn-primary btn-sm" onClick={handleAddInlineExpense} disabled={addingInline}>
+                    {addingInline ? '⏳' : 'إضافة'}
+                  </button>
+                </td>
+                {isAdmin && <td></td>}
+              </tr>
+              {filteredExpenses.map((item, index) => (
                 <tr key={item._id}>
-                  <td style={{ color: 'var(--text-muted)' }}>{item.date}</td>
-                  <td style={{ fontWeight: 700 }}>{item.reason}</td>
+                  <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{index + 1}</td>
                   <td>
                     {item.type === 'teacher_loan' ? (
                       <span className="badge badge-orange">سلفة مدرس/مدرب</span>
@@ -210,8 +333,19 @@ export default function ExpensesSection({ userRole }: ExpensesSectionProps) {
                       <span className="badge badge-info">مصروف عام</span>
                     )}
                   </td>
+                  <td style={{ fontWeight: 700 }}>{item.reason}</td>
                   <td style={{ fontWeight: 800, color: 'var(--error)' }}>{item.amount} ج.م</td>
-                  <td>{item.teacher ? `${item.teacher.name} (${item.teacher.subjectName})` : '-'}</td>
+                  <td style={{ color: 'var(--text-muted)' }}>
+                    <div style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>
+                      {item.teacher ? `${item.teacher.name} (${item.teacher.subjectName})` : (item.createdBy?.name || 'الأكاديمية')}
+                    </div>
+                    <div style={{ fontSize: 13, marginTop: 4 }}>{item.date}</div>
+                    {(item as any).createdAt && (
+                      <div style={{ fontSize: 12, color: 'var(--accent-gold)' }}>
+                        {getArabicDayName((item as any).createdAt)} | {getArabicTimeStr((item as any).createdAt)}
+                      </div>
+                    )}
+                  </td>
                   {isAdmin && (
                     <td>
                       <button className="btn btn-ghost btn-sm" style={{ color: 'var(--error)' }} onClick={() => handleDeleteExpense(item._id)}>

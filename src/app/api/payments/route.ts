@@ -49,45 +49,50 @@ export async function POST(req: NextRequest) {
     if (!student) {
       return NextResponse.json({ error: 'الطالب غير موجود' }, { status: 404 });
     }
+
+    // Get teacher linked to this student
     const teacherId = student.teacher;
 
-    // Fetch existing payment to calculate difference
+    // Calculate how much was previously paid this month (to compute the difference)
     const existingPayment = await Payment.findOne({ student: studentId, month });
-    const previousAmount = existingPayment?.amount || 0;
+    const previousAmount = existingPayment ? (existingPayment.amount || 0) : 0;
     const newAmount = Number(amount) || 0;
     const amountDifference = newAmount - previousAmount;
 
+    // Upsert the payment record
+    const paymentStatus = status || 'paid';
     const payment = await Payment.findOneAndUpdate(
       { student: studentId, month },
       {
-        student: studentId,
-        teacher: teacherId,
-        month,
-        amount: newAmount,
-        paymentType: paymentType || 'monthly',
-        paymentReason: paymentReason?.trim() || 'اشتراك شهري',
-        remainingAmount: Number(remainingAmount) || 0,
-        remainingReason: remainingReason?.trim() || '',
-        status: status || 'paid',
-        notes: notes?.trim(),
-        paidAt: status === 'paid' || status === 'partial' ? new Date() : undefined,
+        $set: {
+          student: studentId,
+          teacher: teacherId || undefined,
+          month,
+          amount: newAmount,
+          paymentType: paymentType || 'monthly',
+          paymentReason: paymentReason?.trim() || 'اشتراك شهري',
+          remainingAmount: Number(remainingAmount) || 0,
+          remainingReason: remainingReason?.trim() || '',
+          status: paymentStatus,
+          notes: notes?.trim(),
+          ...(paymentStatus === 'paid' || paymentStatus === 'partial'
+            ? { paidAt: existingPayment?.paidAt || new Date() }
+            : {}),
+        },
       },
       { upsert: true, new: true }
     );
 
-    // Update teacher balance if there's a difference and a teacher is assigned
+    // Update teacher balance by the DIFFERENCE in amount (teacher's percentage cut)
     if (amountDifference !== 0 && teacherId) {
       const teacher = await Teacher.findById(teacherId);
       if (teacher) {
-        // Calculate the teacher's cut based on their percentage
         const teacherCut = (amountDifference * (teacher.teacherPercentage || 50)) / 100;
         await Teacher.findByIdAndUpdate(teacherId, {
           $inc: { balance: teacherCut },
         });
       }
     }
-
-    // Removed notification
 
     return NextResponse.json({ success: true, payment });
   } catch (error: any) {

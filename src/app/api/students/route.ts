@@ -18,8 +18,13 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search');
+    const type = searchParams.get('type'); // 'student' | 'trainee'
+    const month = searchParams.get('month');
 
     let query: any = {};
+    if (type) {
+      query.type = type;
+    }
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: 'i' } },
@@ -30,13 +35,13 @@ export async function GET(req: NextRequest) {
     }
 
     const students = await Student.find(query).populate('teacher').sort({ createdAt: -1 });
-    const currentMonth = new Date().toISOString().substring(0, 7);
+    const targetMonth = month || new Date().toISOString().substring(0, 7);
 
     // Populate payment status & attendance for each student
     const studentList = await Promise.all(
       students.map(async (st) => {
         const [payment, attendances] = await Promise.all([
-          Payment.findOne({ student: st._id, month: currentMonth }),
+          Payment.findOne({ student: st._id, month: targetMonth }),
           Attendance.find({ student: st._id }),
         ]);
 
@@ -64,6 +69,7 @@ export async function GET(req: NextRequest) {
           totalAttendance: totalAtt,
           presentCount: presentAtt,
           absentCount: absentAtt,
+          type: st.type || 'student',
           createdAt: st.createdAt,
         };
       })
@@ -84,9 +90,10 @@ export async function POST(req: NextRequest) {
     await connectToDatabase();
 
     const body = await req.json();
-    const { name, phone, parentPhone, subjectName, teacherId, grade, monthlyFee, notes } = body;
+    const { name, phone, parentPhone, subjectName, teacherId, grade, monthlyFee, notes, type } = body;
 
-    if (!name || !phone || !parentPhone || !subjectName || !grade) {
+    const isTrainee = type === 'trainee';
+    if (!name || !phone || !parentPhone || !subjectName || (!isTrainee && !grade)) {
       return NextResponse.json({ error: 'يرجى إدخال اسم الطالب، رقم الفون، رقم فون الوالد، المادة، والصف' }, { status: 400 });
     }
 
@@ -96,9 +103,10 @@ export async function POST(req: NextRequest) {
       parentPhone: parentPhone.trim(),
       subjectName: subjectName.trim(),
       teacher: teacherId || undefined,
-      grade: grade.trim(),
+      grade: isTrainee ? 'متدرب' : grade.trim(),
       monthlyFee: Number(monthlyFee) || 0,
       notes: notes?.trim() || '',
+      type: type || 'student',
     });
 
     // Create current month payment placeholder
@@ -128,25 +136,36 @@ export async function PUT(req: NextRequest) {
     await connectToDatabase();
 
     const body = await req.json();
-    const { id, name, phone, parentPhone, subjectName, teacherId, grade, monthlyFee, notes, grades } = body;
+    const { id, name, phone, parentPhone, subjectName, teacherId, grade, monthlyFee, notes, grades, type } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'معرف الطالب مطلوب' }, { status: 400 });
     }
 
+    const updateData: any = {
+      name: name?.trim(),
+      phone: phone?.trim(),
+      parentPhone: parentPhone?.trim(),
+      subjectName: subjectName?.trim(),
+      teacher: teacherId || undefined,
+      monthlyFee: Number(monthlyFee) || 0,
+      notes: notes?.trim() || '',
+      grades: grades || [],
+    };
+    
+    if (type) {
+      updateData.type = type;
+      if (type === 'trainee') {
+        updateData.grade = 'متدرب';
+      }
+    }
+    if (type !== 'trainee' && grade) {
+      updateData.grade = grade.trim();
+    }
+
     const updatedStudent = await Student.findByIdAndUpdate(
       id,
-      {
-        name: name?.trim(),
-        phone: phone?.trim(),
-        parentPhone: parentPhone?.trim(),
-        subjectName: subjectName?.trim(),
-        teacher: teacherId || undefined,
-        grade: grade?.trim(),
-        monthlyFee: Number(monthlyFee) || 0,
-        notes: notes?.trim() || '',
-        grades: grades || [],
-      },
+      updateData,
       { new: true }
     );
 

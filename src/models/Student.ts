@@ -19,6 +19,7 @@ export interface IStudent extends Document {
   notes?: string;
   grades?: IGradeScore[];
   isActive: boolean;
+  type: 'student' | 'trainee';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -73,6 +74,12 @@ const StudentSchema = new Schema<IStudent>(
     isActive: {
       type: Boolean,
       default: true,
+    },
+    type: {
+      type: String,
+      enum: ['student', 'trainee'],
+      default: 'student',
+      required: true,
     },
   },
   {

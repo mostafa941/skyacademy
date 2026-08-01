@@ -9,6 +9,10 @@ import RoomsSection from './sections/RoomsSection';
 import IncomeSection from './sections/IncomeSection';
 import ExpensesSection from './sections/ExpensesSection';
 import NotesSection from './sections/NotesSection';
+import StudentsPaymentStatusSection from './sections/StudentsPaymentStatusSection';
+import UsersSection from './sections/UsersSection';
+import SettlementsSection from './sections/SettlementsSection';
+import NotificationsPanel from './NotificationsPanel';
 
 interface User {
   id: string;
@@ -32,7 +36,11 @@ const navItems: NavItem[] = [
   { id: 'rooms', label: 'القاعات', icon: '🏫' },
   { id: 'income', label: 'الدخل', icon: '💵' },
   { id: 'expenses', label: 'الخرج', icon: '📤' },
+  { id: 'settlements', label: 'التصفيات', icon: '⚖️' },
   { id: 'notes', label: 'الملاحظات', icon: '📝' },
+  { id: 'paid_students', label: 'سجل المسددين', icon: '🟢' },
+  { id: 'partial_students', label: 'عليهم مبالغ متبقية', icon: '🟡' },
+  { id: 'unpaid_students', label: 'غير المسددين', icon: '🔴' },
 ];
 
 export default function DashboardLayout({ role }: { children?: React.ReactNode; role: 'admin' | 'secretary' }) {
@@ -97,22 +105,25 @@ export default function DashboardLayout({ role }: { children?: React.ReactNode; 
         <div className="sidebar-logo">
           <span style={{ fontSize: 32 }}>🌤️</span>
           <div>
-            <div style={{ fontWeight: 900, fontSize: 18, color: 'var(--accent-orange)' }}>Sky Academy</div>
+            <div style={{ fontWeight: 800, fontSize: 18, color: 'var(--accent-orange)' }}>Sky Academy</div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>اسكاي اكاديمي</div>
           </div>
         </div>
 
-        {/* User Info */}
-        <div style={{
-          background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)',
-          padding: '14px 16px', marginBottom: 20, border: '1px solid var(--border)',
-        }}>
-          <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-primary)', marginBottom: 4 }}>
-            {user.name}
+        {/* User Info & Notifications */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+          <div style={{
+            flex: 1, background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)',
+            padding: '14px 16px', border: '1px solid var(--border)',
+          }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-primary)', marginBottom: 4 }}>
+              {user.name}
+            </div>
+            <div className="badge badge-orange" style={{ fontSize: 11 }}>
+              {user.role === 'admin' ? '⚡ الأدمن (مدير النظام)' : '💼 سكرتارية الأكاديمية'}
+            </div>
           </div>
-          <div className="badge badge-orange" style={{ fontSize: 11 }}>
-            {user.role === 'admin' ? '⚡ الأدمن (مدير النظام)' : '💼 سكرتارية الأكاديمية'}
-          </div>
+          <NotificationsPanel />
         </div>
 
         {/* Navigation Items */}
@@ -120,13 +131,30 @@ export default function DashboardLayout({ role }: { children?: React.ReactNode; 
           {navItems.filter(item => !(role === 'secretary' && item.id === 'income')).map((item) => (
             <button
               key={item.id}
+              onClick={() => {
+                setActiveSection(item.id);
+                setMobileOpen(false);
+              }}
               className={`sidebar-item ${activeSection === item.id ? 'active' : ''}`}
-              onClick={() => { setActiveSection(item.id); setMobileOpen(false); }}
             >
               <span style={{ fontSize: 20 }}>{item.icon}</span>
               <span>{item.label}</span>
             </button>
           ))}
+          
+          {/* Admin only users tab */}
+          {user.role === 'admin' && (
+            <button
+              onClick={() => {
+                setActiveSection('users');
+                setMobileOpen(false);
+              }}
+              className={`sidebar-item ${activeSection === 'users' ? 'active' : ''}`}
+            >
+              <span style={{ fontSize: 20 }}>👥</span>
+              <span>إدارة السكرتارية</span>
+            </button>
+          )}
         </nav>
 
         {/* Logout */}
@@ -157,7 +185,10 @@ export default function DashboardLayout({ role }: { children?: React.ReactNode; 
             >
               ☰
             </button>
-            <div style={{ fontWeight: 800, color: 'var(--accent-orange)', fontSize: 16 }}>Sky Academy 🌤️</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <NotificationsPanel />
+              <div style={{ fontWeight: 800, color: 'var(--accent-orange)', fontSize: 16 }}>Sky Academy 🌤️</div>
+            </div>
           </div>
 
           {/* Dynamic Section Rendering */}
@@ -168,7 +199,12 @@ export default function DashboardLayout({ role }: { children?: React.ReactNode; 
           {activeSection === 'rooms' && <RoomsSection />}
           {activeSection === 'income' && <IncomeSection />}
           {activeSection === 'expenses' && <ExpensesSection userRole={user.role} />}
+          {activeSection === 'settlements' && <SettlementsSection />}
           {activeSection === 'notes' && <NotesSection />}
+          {activeSection === 'paid_students' && <StudentsPaymentStatusSection paymentStatus="paid" />}
+          {activeSection === 'partial_students' && <StudentsPaymentStatusSection paymentStatus="partial" />}
+          {activeSection === 'unpaid_students' && <StudentsPaymentStatusSection paymentStatus="unpaid" />}
+          {activeSection === 'users' && user.role === 'admin' && <UsersSection userRole={user.role} />}
         </div>
       </main>
 

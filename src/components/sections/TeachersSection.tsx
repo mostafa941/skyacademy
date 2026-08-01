@@ -18,6 +18,7 @@ interface TeacherStaff {
   totalAttendance: number;
   presentCount: number;
   absentCount: number;
+  grades: string[];
 }
 
 interface RoomOption {
@@ -30,6 +31,25 @@ interface TeachersSectionProps {
   userRole: string;
 }
 
+const primaryGrades = [
+  'الصف الأول الابتدائي',
+  'الصف الثاني الابتدائي',
+  'الصف الثالث الابتدائي',
+  'الصف الرابع الابتدائي',
+  'الصف الخامس الابتدائي',
+  'الصف السادس الابتدائي',
+];
+const prepGrades = [
+  'الصف الأول الإعدادي',
+  'الصف الثاني الإعدادي',
+  'الصف الثالث الإعدادي',
+];
+const secondaryGrades = [
+  'الصف الأول الثانوي',
+  'الصف الثاني الثانوي',
+  'الصف الثالث الثانوي',
+];
+
 export default function TeachersSection({ staffType, userRole }: TeachersSectionProps) {
   const [staffList, setStaffList] = useState<TeacherStaff[]>([]);
   const [rooms, setRooms] = useState<RoomOption[]>([]);
@@ -41,6 +61,14 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
   const [teacherStudents, setTeacherStudents] = useState<any[]>([]);
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [search, setSearch] = useState('');
+
+  // Profile stage navigation states
+  const [profileView, setProfileView] = useState<'stages' | 'students'>('stages');
+  const [selectedProfileStage, setSelectedProfileStage] = useState<'primary' | 'prep' | 'secondary' | ''>('');
+  const [selectedProfileGrade, setSelectedProfileGrade] = useState<string>('');
+  const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().substring(0, 10));
+  const [bulkAttendance, setBulkAttendance] = useState<Record<string, 'present' | 'absent' | 'excused'>>({});
+  const [savingAttendance, setSavingAttendance] = useState(false);
 
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
@@ -72,6 +100,7 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
     teacherPercentage: 60,
     academyPercentage: 40,
     balance: 0,
+    grades: [] as string[],
   });
 
   const [attForm, setAttForm] = useState({ status: 'present' as 'present' | 'absent', date: new Date().toISOString().substring(0, 10), notes: '' });
@@ -274,6 +303,49 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
     }
   };
 
+  const initializeBulkAttendance = (grade: string, students: any[]) => {
+    const initialMap: Record<string, 'present' | 'absent' | 'excused'> = {};
+    students.filter(st => st.grade === grade).forEach(st => {
+      initialMap[st.id] = 'present';
+    });
+    setBulkAttendance(initialMap);
+  };
+
+  const handleSaveBulkAttendance = async () => {
+    const studentsInGrade = teacherStudents.filter(ts => ts.grade === selectedProfileGrade);
+    if (studentsInGrade.length === 0) return;
+    
+    setSavingAttendance(true);
+    try {
+      const promises = studentsInGrade.map(st => {
+        const status = bulkAttendance[st.id] || 'present';
+        return fetch('/api/attendance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            studentId: st.id,
+            date: attendanceDate,
+            status,
+            notes: 'تسجيل جماعي من صفحة المدرس',
+          }),
+        });
+      });
+      
+      const results = await Promise.all(promises);
+      const allOk = results.every(res => res.ok);
+      if (allOk) {
+        showToast('تم حفظ حضور وغياب طلاب الصف بنجاح');
+        loadTeacherStudents(selectedStaff!.id); // reload student counts/data
+      } else {
+        showToast('فشل حفظ بعض سجلات الحضور', 'error');
+      }
+    } catch (err) {
+      showToast('خطأ بالخادم أثناء حفظ الحضور', 'error');
+    } finally {
+      setSavingAttendance(false);
+    }
+  };
+
   const isAdmin = userRole === 'admin';
   const filteredStaff = staffList.filter(s => s.name.includes(search) || s.phone.includes(search) || s.subjectName.includes(search));
 
@@ -292,7 +364,7 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
               </p>
             </div>
             <button className="btn btn-primary" onClick={() => {
-              setStaffForm({ id: '', name: '', phone: '', subjectName: '', roomId: '', teacherPercentage: 60, academyPercentage: 40, balance: 0 });
+              setStaffForm({ id: '', name: '', phone: '', subjectName: '', roomId: '', teacherPercentage: 60, academyPercentage: 40, balance: 0, grades: [] });
               setShowAddModal(true);
             }}>
               + إضافة {labelSingle} جديد
@@ -368,6 +440,9 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
                           e.stopPropagation(); 
                           setSelectedStaff(st); 
                           setCurrentView('profile'); 
+                          setProfileView('stages');
+                          setSelectedProfileStage('');
+                          setSelectedProfileGrade('');
                           loadTeacherStudents(st.id); 
                         }}>
                           فتح الملف
@@ -407,6 +482,7 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
                     teacherPercentage: selectedStaff.teacherPercentage,
                     academyPercentage: selectedStaff.academyPercentage,
                     balance: selectedStaff.balance,
+                    grades: selectedStaff.grades || [],
                   });
                   setShowAddModal(true);
                 }}>✏️ تعديل</button>
@@ -442,79 +518,292 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
               )}
             </div>
 
-            {/* Teacher's Students Table */}
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-              <div style={{ padding: 20, borderBottom: '1px solid var(--border)' }}>
-                <h3 style={{ fontSize: 18, fontWeight: 800 }}>👨‍🎓 قائمة طلاب المدرس ({teacherStudents.length}) ومتابعة الدفع</h3>
-              </div>
-              {loadingStudents ? (
-                <div style={{ textAlign: 'center', padding: '40px 0' }}>
-                  <div className="spinner" style={{ width: 30, height: 30 }} />
+            {/* Teacher's/Trainer's Students Table */}
+            {staffType === 'trainer' ? (
+              <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                <div style={{ padding: 20, borderBottom: '1px solid var(--border)' }}>
+                  <h3 style={{ fontSize: 18, fontWeight: 800 }}>🏋️ قائمة متدربي المدرب ({teacherStudents.length}) ومتابعة الدفع</h3>
                 </div>
-              ) : teacherStudents.length === 0 ? (
-                <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>لا يوجد طلاب مسجلين مع هذا الـ {labelSingle}</div>
-              ) : (
-                <div className="table-wrapper" style={{ border: 'none', borderRadius: 0 }}>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>اسم الطالب</th>
-                        <th>الصف</th>
-                        <th>الدفع الفعلي / المطلوب</th>
-                        <th>حالة الدفع (الشهر الحالي)</th>
-                        <th>نظام الدفع</th>
-                        <th>الإجراءات</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {teacherStudents.map(ts => (
-                        <tr key={ts.id}>
-                          <td style={{ fontWeight: 700 }}>{ts.name}</td>
-                          <td style={{ color: 'var(--text-secondary)' }}>{ts.grade}</td>
-                          <td>
-                            <strong style={{ color: 'var(--success)' }}>{ts.paymentAmount} ج.م</strong> 
-                            <span style={{ color: 'var(--text-muted)', margin: '0 4px' }}>/</span> 
-                            {ts.monthlyFee} ج.م
-                          </td>
-                          <td>
-                            {ts.paymentStatus === 'paid' ? (
-                              <span className="badge badge-success">تم الدفع</span>
-                            ) : ts.paymentStatus === 'partial' ? (
-                              <span className="badge badge-orange">جزئي (متبقي {ts.remainingAmount})</span>
-                            ) : (
-                              <span className="badge badge-danger">لم يدفع</span>
-                            )}
-                          </td>
-                          <td>
-                            {ts.paymentType === 'session' ? (
-                              <span className="badge badge-info">بالحصة ⏱️</span>
-                            ) : (
-                              <span className="badge badge-secondary">بالشهر 📅</span>
-                            )}
-                          </td>
-                          <td>
-                            <button className="btn btn-primary btn-sm" onClick={() => {
-                              setSelectedStudentForPay(ts);
-                              setPayForm({
-                                amount: ts.monthlyFee,
-                                paymentType: ts.paymentType || 'monthly',
-                                paymentReason: ts.paymentType === 'session' ? 'دفع حصة' : 'اشتراك شهري',
-                                remainingAmount: 0,
-                                remainingReason: '',
-                                status: 'paid'
-                              });
-                              setShowPayModal(true);
-                            }}>
-                              تسجيل دفع
-                            </button>
-                          </td>
+                {loadingStudents ? (
+                  <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                    <div className="spinner" style={{ width: 30, height: 30 }} />
+                  </div>
+                ) : teacherStudents.length === 0 ? (
+                  <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>لا يوجد متدربين مسجلين مع هذا الـ {labelSingle}</div>
+                ) : (
+                  <div className="table-wrapper" style={{ border: 'none', borderRadius: 0 }}>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>اسم المتدرب</th>
+                          <th>الدفع الفعلي / المطلوب</th>
+                          <th>حالة الدفع (الشهر الحالي)</th>
+                          <th>نظام الدفع</th>
+                          <th>الإجراءات</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {teacherStudents.map(ts => (
+                          <tr key={ts.id}>
+                            <td style={{ fontWeight: 700 }}>{ts.name}</td>
+                            <td>
+                              <strong style={{ color: 'var(--success)' }}>{ts.paymentAmount} ج.م</strong> 
+                              <span style={{ color: 'var(--text-muted)', margin: '0 4px' }}>/</span> 
+                              {ts.monthlyFee} ج.م
+                            </td>
+                            <td>
+                              {ts.paymentStatus === 'paid' ? (
+                                <span className="badge badge-success">تم الدفع</span>
+                              ) : ts.paymentStatus === 'partial' ? (
+                                <span className="badge badge-orange">جزئي (متبقي {ts.remainingAmount})</span>
+                              ) : (
+                                <span className="badge badge-danger">لم يدفع</span>
+                              )}
+                            </td>
+                            <td>
+                              {ts.paymentType === 'session' ? (
+                                <span className="badge badge-info">بالحصة ⏱️</span>
+                              ) : (
+                                <span className="badge badge-secondary">بالشهر 📅</span>
+                              )}
+                            </td>
+                            <td>
+                              <button className="btn btn-primary btn-sm" onClick={() => {
+                                setSelectedStudentForPay(ts);
+                                setPayForm({
+                                  amount: ts.monthlyFee,
+                                  paymentType: ts.paymentType || 'monthly',
+                                  paymentReason: ts.paymentType === 'session' ? 'دفع حصة' : 'اشتراك شهري',
+                                  remainingAmount: 0,
+                                  remainingReason: '',
+                                  status: 'paid'
+                                });
+                                setShowPayModal(true);
+                              }}>
+                                تسجيل دفع
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ) : (
+              // Teacher view: Stage and Grade selection or grade student table
+              profileView === 'stages' ? (
+                <div className="card" style={{ padding: 24 }}>
+                  <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 16 }}>🏫 اختر المرحلة العمرية والدراسية لمتابعة الحضور والغياب والطلاب</h3>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+                    {/* Primary Card */}
+                    {(selectedStaff.grades || []).some(g => primaryGrades.includes(g)) && (
+                      <div 
+                        className="card card-hover" 
+                        style={{ cursor: 'pointer', padding: 20, border: selectedProfileStage === 'primary' ? '2px solid var(--accent-orange)' : '1px solid var(--border)', background: 'var(--bg-elevated)', textAlign: 'center', transition: 'all 0.2s' }} 
+                        onClick={() => setSelectedProfileStage('primary')}
+                      >
+                        <span style={{ fontSize: 40 }}>🎒</span>
+                        <h4 style={{ fontSize: 16, fontWeight: 700, marginTop: 10 }}>المرحلة الابتدائية</h4>
+                        <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>الصفوف من أولى ابتدائي لغاية سادسة</p>
+                      </div>
+                    )}
+
+                    {/* Prep Card */}
+                    {(selectedStaff.grades || []).some(g => prepGrades.includes(g)) && (
+                      <div 
+                        className="card card-hover" 
+                        style={{ cursor: 'pointer', padding: 20, border: selectedProfileStage === 'prep' ? '2px solid var(--accent-orange)' : '1px solid var(--border)', background: 'var(--bg-elevated)', textAlign: 'center', transition: 'all 0.2s' }} 
+                        onClick={() => setSelectedProfileStage('prep')}
+                      >
+                        <span style={{ fontSize: 40 }}>🏫</span>
+                        <h4 style={{ fontSize: 16, fontWeight: 700, marginTop: 10 }}>المرحلة الإعدادية</h4>
+                        <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>الصفوف من أولى إعدادي لغاية تالتة إعدادي</p>
+                      </div>
+                    )}
+
+                    {/* Secondary Card */}
+                    {(selectedStaff.grades || []).some(g => secondaryGrades.includes(g)) && (
+                      <div 
+                        className="card card-hover" 
+                        style={{ cursor: 'pointer', padding: 20, border: selectedProfileStage === 'secondary' ? '2px solid var(--accent-orange)' : '1px solid var(--border)', background: 'var(--bg-elevated)', textAlign: 'center', transition: 'all 0.2s' }} 
+                        onClick={() => setSelectedProfileStage('secondary')}
+                      >
+                        <span style={{ fontSize: 40 }}>🎓</span>
+                        <h4 style={{ fontSize: 16, fontWeight: 700, marginTop: 10 }}>المرحلة الثانوية</h4>
+                        <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>الصفوف من أولى ثانوي لغاية تالتة ثانوي</p>
+                      </div>
+                    )}
+
+                    {!(selectedStaff.grades || []).length && (
+                      <div style={{ gridColumn: 'span 3', textAlign: 'center', padding: 20, color: 'var(--text-secondary)' }}>
+                        ⚠️ لم يتم ربط المدرس بأي مرحلة أو صف دراسي بعد. يرجى الضغط على زر "تعديل" وتحديد صفوف المدرس.
+                      </div>
+                    )}
+                  </div>
+
+                  {selectedProfileStage && (
+                    <div style={{ marginTop: 24, borderTop: '1px solid var(--border)', paddingTop: 20 }}>
+                      <h4 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>اختر الصف الدراسي:</h4>
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        {(selectedStaff.grades || [])
+                          .filter(g => {
+                            if (selectedProfileStage === 'primary') return primaryGrades.includes(g);
+                            if (selectedProfileStage === 'prep') return prepGrades.includes(g);
+                            if (selectedProfileStage === 'secondary') return secondaryGrades.includes(g);
+                            return false;
+                          })
+                          .map(grade => (
+                            <button
+                              key={grade}
+                              className="btn btn-secondary"
+                              onClick={() => {
+                                setSelectedProfileGrade(grade);
+                                setProfileView('students');
+                                initializeBulkAttendance(grade, teacherStudents);
+                              }}
+                            >
+                              {grade}
+                            </button>
+                          ))
+                        }
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              ) : (
+                // Students List and Bulk Attendance for selected grade
+                <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                  <div style={{ padding: 20, borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                    <div>
+                      <h3 style={{ fontSize: 18, fontWeight: 800 }}>👨‍🎓 طلاب {selectedProfileGrade} للمدرس ({teacherStudents.filter(ts => ts.grade === selectedProfileGrade).length} طلاب)</h3>
+                    </div>
+                    <button className="btn btn-secondary btn-sm" onClick={() => { setProfileView('stages'); setSelectedProfileGrade(''); }}>
+                      ← عودة للمراحل التعليمية
+                    </button>
+                  </div>
+                  {loadingStudents ? (
+                    <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                      <div className="spinner" style={{ width: 30, height: 30 }} />
+                    </div>
+                  ) : teacherStudents.filter(ts => ts.grade === selectedProfileGrade).length === 0 ? (
+                    <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>لا يوجد طلاب مسجلين في هذا الصف مع المدرس</div>
+                  ) : (
+                    <>
+                      <div className="table-wrapper" style={{ border: 'none', borderRadius: 0 }}>
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>اسم الطالب</th>
+                              <th>الدفع الفعلي / المطلوب</th>
+                              <th>حالة الدفع (الشهر الحالي)</th>
+                              <th>نظام الدفع</th>
+                              <th>الإجراءات</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {teacherStudents.filter(ts => ts.grade === selectedProfileGrade).map(ts => (
+                              <tr key={ts.id}>
+                                <td style={{ fontWeight: 700 }}>{ts.name}</td>
+                                <td>
+                                  <strong style={{ color: 'var(--success)' }}>{ts.paymentAmount} ج.م</strong> 
+                                  <span style={{ color: 'var(--text-muted)', margin: '0 4px' }}>/</span> 
+                                  {ts.monthlyFee} ج.م
+                                </td>
+                                <td>
+                                  {ts.paymentStatus === 'paid' ? (
+                                    <span className="badge badge-success">تم الدفع</span>
+                                  ) : ts.paymentStatus === 'partial' ? (
+                                    <span className="badge badge-orange">جزئي (متبقي {ts.remainingAmount})</span>
+                                  ) : (
+                                    <span className="badge badge-danger">لم يدفع</span>
+                                  )}
+                                </td>
+                                <td>
+                                  {ts.paymentType === 'session' ? (
+                                    <span className="badge badge-info">بالحصة ⏱️</span>
+                                  ) : (
+                                    <span className="badge badge-secondary">بالشهر 📅</span>
+                                  )}
+                                </td>
+                                <td>
+                                  <button className="btn btn-primary btn-sm" onClick={() => {
+                                    setSelectedStudentForPay(ts);
+                                    setPayForm({
+                                      amount: ts.monthlyFee,
+                                      paymentType: ts.paymentType || 'monthly',
+                                      paymentReason: ts.paymentType === 'session' ? 'دفع حصة' : 'اشتراك شهري',
+                                      remainingAmount: 0,
+                                      remainingReason: '',
+                                      status: 'paid'
+                                    });
+                                    setShowPayModal(true);
+                                  }}>
+                                    تسجيل دفع
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Bulk Attendance Section */}
+                      <div style={{ padding: 20, background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)' }}>
+                        <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                          📅 تسجيل حضور وغياب الصف دفعة واحدة
+                        </h3>
+                        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
+                          <div className="input-group" style={{ marginBottom: 0 }}>
+                            <label className="input-label" style={{ fontSize: 13 }}>تاريخ الحصة *</label>
+                            <input className="input" type="date" value={attendanceDate} onChange={(e) => setAttendanceDate(e.target.value)} style={{ padding: '8px 12px', fontSize: 14 }} />
+                          </div>
+                        </div>
+                        
+                        <div className="table-wrapper" style={{ maxHeight: 250, overflowY: 'auto', marginBottom: 16 }}>
+                          <table style={{ background: 'var(--bg-card)' }}>
+                            <thead>
+                              <tr>
+                                <th>اسم الطالب</th>
+                                <th>تحديد الحالة اليومية</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {teacherStudents.filter(ts => ts.grade === selectedProfileGrade).map(st => (
+                                <tr key={st.id}>
+                                  <td style={{ fontWeight: 700 }}>{st.name}</td>
+                                  <td>
+                                    <div style={{ display: 'flex', gap: 14 }}>
+                                      <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 13 }}>
+                                        <input type="radio" name={`bulk-att-${st.id}`} checked={bulkAttendance[st.id] === 'present'} onChange={() => setBulkAttendance({ ...bulkAttendance, [st.id]: 'present' })} />
+                                        حاضر ✅
+                                      </label>
+                                      <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 13 }}>
+                                        <input type="radio" name={`bulk-att-${st.id}`} checked={bulkAttendance[st.id] === 'absent'} onChange={() => setBulkAttendance({ ...bulkAttendance, [st.id]: 'absent' })} />
+                                        غائب ❌
+                                      </label>
+                                      <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 13 }}>
+                                        <input type="radio" name={`bulk-att-${st.id}`} checked={bulkAttendance[st.id] === 'excused'} onChange={() => setBulkAttendance({ ...bulkAttendance, [st.id]: 'excused' })} />
+                                        مستأذن ⚠️
+                                      </label>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        
+                        <button className="btn btn-primary" onClick={handleSaveBulkAttendance} disabled={savingAttendance || teacherStudents.filter(ts => ts.grade === selectedProfileGrade).length === 0}>
+                          {savingAttendance ? 'جاري حفظ سجلات الحضور...' : 'حفظ سجل حضور وغياب الصف'}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )
+            )}
           </div>
         )
       )}
@@ -539,8 +828,8 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
                   <input className="input" placeholder="01xxxxxxxxx" value={staffForm.phone} onChange={(e) => setStaffForm({ ...staffForm, phone: e.target.value })} />
                 </div>
                 <div className="input-group">
-                  <label className="input-label">المادة / التخصص *</label>
-                  <input className="input" placeholder="مثال: فيزياء، كاراتيه..." value={staffForm.subjectName} onChange={(e) => setStaffForm({ ...staffForm, subjectName: e.target.value })} />
+                  <label className="input-label">{staffType === 'trainer' ? 'التدريب *' : 'المادة / التخصص *'}</label>
+                  <input className="input" placeholder={staffType === 'trainer' ? "مثال: كاراتيه، جمباز..." : "مثال: لغة عربية، فيزياء..."} value={staffForm.subjectName} onChange={(e) => setStaffForm({ ...staffForm, subjectName: e.target.value })} />
                 </div>
               </div>
               <div className="input-group">
@@ -552,6 +841,80 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
                   ))}
                 </select>
               </div>
+
+              {staffType === 'teacher' && (
+                <div className="input-group">
+                  <label className="input-label">المراحل والصفوف الدراسية التي يُدرسها المدرس *</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--bg-elevated)', padding: 12, borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
+                    {/* Primary */}
+                    <div>
+                      <strong style={{ display: 'block', marginBottom: 4, color: 'var(--accent-orange)' }}>🎒 المرحلة الابتدائية</strong>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                        {primaryGrades.map(g => (
+                          <label key={g} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={staffForm.grades.includes(g)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setStaffForm({ ...staffForm, grades: [...staffForm.grades, g] });
+                                } else {
+                                  setStaffForm({ ...staffForm, grades: staffForm.grades.filter(x => x !== g) });
+                                }
+                              }}
+                            />
+                            {g.replace('الصف ', '')}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Prep */}
+                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+                      <strong style={{ display: 'block', marginBottom: 4, color: 'var(--accent-gold)' }}>🏫 المرحلة الإعدادية</strong>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                        {prepGrades.map(g => (
+                          <label key={g} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={staffForm.grades.includes(g)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setStaffForm({ ...staffForm, grades: [...staffForm.grades, g] });
+                                } else {
+                                  setStaffForm({ ...staffForm, grades: staffForm.grades.filter(x => x !== g) });
+                                }
+                              }}
+                            />
+                            {g.replace('الصف ', '')}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Secondary */}
+                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+                      <strong style={{ display: 'block', marginBottom: 4, color: 'var(--success)' }}>🎓 المرحلة الثانوية</strong>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                        {secondaryGrades.map(g => (
+                          <label key={g} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={staffForm.grades.includes(g)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setStaffForm({ ...staffForm, grades: [...staffForm.grades, g] });
+                                } else {
+                                  setStaffForm({ ...staffForm, grades: staffForm.grades.filter(x => x !== g) });
+                                }
+                              }}
+                            />
+                            {g.replace('الصف ', '')}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {isAdmin && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
