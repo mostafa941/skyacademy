@@ -130,7 +130,9 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'المستخدم غير موجود' }, { status: 404 });
     }
 
-    if (userToDelete.role === 'admin' && userToDelete._id.toString() === currentUser.userId) {
+    const currentUserId = (currentUser as any).userId || (currentUser as any)._id?.toString();
+
+    if (userToDelete.role === 'admin' && userToDelete._id.toString() === currentUserId) {
       return NextResponse.json({ error: 'لا يمكنك حذف حسابك الشخصي' }, { status: 400 });
     }
 
@@ -141,4 +143,3 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
-
