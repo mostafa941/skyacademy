@@ -141,6 +141,7 @@ export async function GET(req: NextRequest) {
         .sort({ paidAt: -1 }),
       Income.find(month ? { date: { $regex: `^${month}` } } : { date: queryDateStr })
         .populate('createdBy', 'name')
+        .populate('teacher', 'name subjectName')
         .sort({ createdAt: -1 }),
     ]);
     
@@ -162,6 +163,9 @@ export async function GET(req: NextRequest) {
         type: 'manual_income',
         amount: i.amount,
         paymentReason: i.reason,
+        subscriberName: i.subscriberName,
+        staffType: i.staffType,
+        teacher: i.teacher,
         paidAt: i.createdAt,
         createdBy: i.createdBy,
       }))

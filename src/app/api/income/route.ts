@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
     await connectToDatabase();
 
     const body = await req.json();
-    const { amount, date, reason } = body;
+    const { amount, date, reason, subscriberName, staffType, teacherId } = body;
 
     if (!amount || amount <= 0) {
       return NextResponse.json({ error: 'المبلغ مطلوب ويجب أن يكون أكبر من صفر' }, { status: 400 });
@@ -86,8 +86,23 @@ export async function POST(req: NextRequest) {
       amount: Number(amount),
       date,
       reason: reason.trim(),
+      subscriberName: subscriberName?.trim(),
+      staffType,
+      teacher: teacherId || undefined,
       createdBy: currentUser._id,
     });
+
+    // Update teacher balance if applicable
+    if (teacherId) {
+      const Teacher = (await import('@/models/Teacher')).default;
+      const teacher = await Teacher.findById(teacherId);
+      if (teacher) {
+        const teacherCut = (Number(amount) * (teacher.teacherPercentage || 50)) / 100;
+        await Teacher.findByIdAndUpdate(teacherId, {
+          $inc: { balance: teacherCut },
+        });
+      }
+    }
 
     return NextResponse.json({ success: true, income });
   } catch (error: unknown) {
@@ -108,6 +123,23 @@ export async function DELETE(req: NextRequest) {
     const id = searchParams.get('id');
     if (!id) {
       return NextResponse.json({ error: 'معرف الدخل مطلوب' }, { status: 400 });
+    }
+
+    const income = await Income.findById(id);
+    if (!income) {
+      return NextResponse.json({ error: 'الدخل غير موجود' }, { status: 404 });
+    }
+
+    // Revert teacher balance if applicable
+    if (income.teacher) {
+      const Teacher = (await import('@/models/Teacher')).default;
+      const teacher = await Teacher.findById(income.teacher);
+      if (teacher) {
+        const teacherCut = (income.amount * (teacher.teacherPercentage || 50)) / 100;
+        await Teacher.findByIdAndUpdate(income.teacher, {
+          $inc: { balance: -teacherCut },
+        });
+      }
     }
 
     await Income.findByIdAndDelete(id);

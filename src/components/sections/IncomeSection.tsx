@@ -11,6 +11,9 @@ interface Invoice {
   paidAt?: string;
   student?: { name: string; phone: string; grade: string; subjectName: string };
   createdBy?: { name: string };
+  subscriberName?: string;
+  staffType?: string;
+  teacher?: { name: string; subjectName: string };
 }
 
 export default function IncomeSection() {
@@ -25,8 +28,11 @@ export default function IncomeSection() {
   const [incomeForm, setIncomeForm] = useState({ amount: '', reason: '', date: new Date().toISOString().substring(0, 10) });
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
-  const [inlineIncome, setInlineIncome] = useState({ name: '', type: '', amount: '', notes: '' });
+  const [inlineIncome, setInlineIncome] = useState({ name: '', staffType: 'teacher' as 'teacher' | 'trainer', teacherId: '', subjectName: '', amount: '', notes: '' });
   const [addingInline, setAddingInline] = useState(false);
+  
+  const [teachers, setTeachers] = useState<any[]>([]);
+  const [trainers, setTrainers] = useState<any[]>([]);
 
   // New Search & Payment States
   const [search, setSearch] = useState('');
@@ -155,6 +161,28 @@ export default function IncomeSection() {
     loadIncome();
   }, [loadIncome]);
 
+  useEffect(() => {
+    const loadStaff = async () => {
+      try {
+        const [resT, resTr] = await Promise.all([
+          fetch('/api/teachers?type=teacher'),
+          fetch('/api/teachers?type=trainer')
+        ]);
+        if (resT.ok) {
+          const d = await resT.json();
+          setTeachers(d.teachers || []);
+        }
+        if (resTr.ok) {
+          const d = await resTr.json();
+          setTrainers(d.teachers || []);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    loadStaff();
+  }, []);
+
   const handleAddIncome = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!incomeForm.amount || !incomeForm.reason || !incomeForm.date) {
@@ -183,12 +211,12 @@ export default function IncomeSection() {
   };
 
   const handleAddInlineIncome = async () => {
-    if (!inlineIncome.name || !inlineIncome.amount) {
-      showToast('يرجى كتابة الاسم والمبلغ على الأقل', 'error');
+    if (!inlineIncome.name || !inlineIncome.amount || !inlineIncome.teacherId) {
+      showToast('يرجى كتابة اسم المشترك، وتحديد المدرس/المدرب، وإدخال المبلغ', 'error');
       return;
     }
     setAddingInline(true);
-    const combinedReason = `[${inlineIncome.name}] - [${inlineIncome.type || 'بدون نوع'}] - ${inlineIncome.notes || ''}`.trim();
+    const combinedReason = `[${inlineIncome.subjectName || 'بدون نوع'}] - ${inlineIncome.notes || ''}`.trim();
     
     try {
       const res = await fetch('/api/income', {
@@ -198,11 +226,14 @@ export default function IncomeSection() {
           amount: Number(inlineIncome.amount),
           reason: combinedReason,
           date: new Date().toISOString().substring(0, 10),
+          subscriberName: inlineIncome.name,
+          staffType: inlineIncome.staffType,
+          teacherId: inlineIncome.teacherId
         }),
       });
       if (res.ok) {
         showToast('تم إضافة الدخل بنجاح');
-        setInlineIncome({ name: '', type: '', amount: '', notes: '' });
+        setInlineIncome({ name: '', staffType: 'teacher', teacherId: '', subjectName: '', amount: '', notes: '' });
         loadIncome();
       } else {
         const data = await res.json();
@@ -212,6 +243,23 @@ export default function IncomeSection() {
       showToast('خطأ بالخادم', 'error');
     } finally {
       setAddingInline(false);
+    }
+  };
+
+  const handleDeleteInvoice = async (inv: Invoice) => {
+    if (!confirm('هل أنت متأكد من حذف هذا السجل؟ (سيتم خصمه من رصيد المدرس إذا تم إضافته له)')) return;
+    try {
+      const url = inv.type === 'manual_income' ? `/api/income?id=${inv._id}` : `/api/payments?id=${inv._id}`;
+      const res = await fetch(url, { method: 'DELETE' });
+      if (res.ok) {
+        showToast('تم حذف السجل بنجاح');
+        loadIncome();
+      } else {
+        const data = await res.json();
+        showToast(data.error || 'حدث خطأ أثناء الحذف', 'error');
+      }
+    } catch {
+      showToast('خطأ بالخادم', 'error');
     }
   };
 
@@ -365,10 +413,40 @@ export default function IncomeSection() {
                 <td style={{ textAlign: 'center', fontWeight: 'bold' }}>+</td>
                 <td style={{ color: 'var(--text-muted)', fontSize: 13 }}>الآن</td>
                 <td>
-                  <input className="input" placeholder="اسم المشترك" style={{ padding: '6px 8px', minWidth: 120, fontSize: 13 }} value={inlineIncome.name} onChange={e => setInlineIncome({...inlineIncome, name: e.target.value})} />
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <input className="input" placeholder="اسم المشترك" style={{ padding: '6px 8px', minWidth: 100, flex: 1, fontSize: 13 }} value={inlineIncome.name} onChange={e => setInlineIncome({...inlineIncome, name: e.target.value})} />
+                    <select className="input" style={{ padding: '6px', fontSize: 12, width: 75 }} value={inlineIncome.staffType} onChange={e => setInlineIncome({...inlineIncome, staffType: e.target.value as any, teacherId: '', subjectName: ''})}>
+                      <option value="teacher">طالب</option>
+                      <option value="trainer">متدرب</option>
+                    </select>
+                  </div>
                 </td>
                 <td>
-                  <input className="input" placeholder="لعبة/كورس/درس" style={{ padding: '6px 8px', minWidth: 120, fontSize: 13 }} value={inlineIncome.type} onChange={e => setInlineIncome({...inlineIncome, type: e.target.value})} />
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <select 
+                      className="input" 
+                      style={{ padding: '6px', fontSize: 12, flex: 1 }} 
+                      value={inlineIncome.teacherId} 
+                      onChange={e => {
+                        const id = e.target.value;
+                        const list = inlineIncome.staffType === 'teacher' ? teachers : trainers;
+                        const selected = list.find(t => t.id === id);
+                        setInlineIncome({...inlineIncome, teacherId: id, subjectName: selected?.subjectName || ''});
+                      }}
+                    >
+                      <option value="">اختر {inlineIncome.staffType === 'teacher' ? 'المدرس' : 'المدرب'}</option>
+                      {(inlineIncome.staffType === 'teacher' ? teachers : trainers).map(t => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                    <input 
+                      className="input" 
+                      placeholder="النوع" 
+                      style={{ padding: '6px', fontSize: 12, width: 80, background: 'var(--bg-disabled)' }} 
+                      value={inlineIncome.subjectName} 
+                      disabled
+                    />
+                  </div>
                 </td>
                 <td>
                   <input className="input" type="number" placeholder="المبلغ" style={{ padding: '6px 8px', width: 90, fontSize: 13 }} value={inlineIncome.amount} onChange={e => setInlineIncome({...inlineIncome, amount: e.target.value})} />
@@ -394,11 +472,14 @@ export default function IncomeSection() {
                     ) : '-'}
                   </td>
                   <td style={{ fontWeight: 700 }}>
-                    {inv.type === 'manual_income' ? (inv.paymentReason?.split('] - [')[0]?.replace('[', '') || 'إضافة يدوية') : (inv.student?.name || 'طالب مجهول')}
+                    {inv.type === 'manual_income' ? (inv.subscriberName || inv.paymentReason?.split('] - [')[0]?.replace('[', '') || 'إضافة يدوية') : (inv.student?.name || 'طالب مجهول')}
                   </td>
                   <td>
                     {inv.type === 'manual_income' ? (
-                      <span className="badge badge-info">{inv.paymentReason?.split('] - [')[1]?.split('] - ')[0] || 'دخل عام'}</span>
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{inv.teacher?.subjectName || inv.paymentReason?.split('] - [')[1]?.split('] - ')[0] || 'دخل عام'}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{inv.teacher?.name || '-'}</div>
+                      </div>
                     ) : (
                       <div>
                         <div style={{ fontWeight: 600 }}>{inv.student?.subjectName}</div>
@@ -408,21 +489,31 @@ export default function IncomeSection() {
                   </td>
                   <td style={{ fontWeight: 800, color: 'var(--success)' }}>{inv.amount} ج.م</td>
                   <td>
-                    {inv.type === 'manual_income' ? (
-                      <div>
-                        <div>{inv.paymentReason?.split('] - ').slice(-1)[0] || inv.paymentReason}</div>
-                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>بواسطة: {inv.createdBy?.name || '-'}</div>
-                      </div>
-                    ) : (
-                      <div>
-                        <div>{inv.paymentReason || 'اشتراك شهري'}</div>
-                        {inv.remainingAmount && inv.remainingAmount > 0 ? (
-                           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--error)', marginTop: 4 }}>
-                             المتبقي: {inv.remainingAmount} ج.م
-                           </div>
-                        ) : null}
-                      </div>
-                    )}
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
+                      {inv.type === 'manual_income' ? (
+                        <div>
+                          <div>{inv.paymentReason?.split('] - ').slice(-1)[0] || inv.paymentReason}</div>
+                          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>بواسطة: {inv.createdBy?.name || '-'}</div>
+                        </div>
+                      ) : (
+                        <div>
+                          <div>{inv.paymentReason || 'اشتراك شهري'}</div>
+                          {inv.remainingAmount && inv.remainingAmount > 0 ? (
+                             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--error)', marginTop: 4 }}>
+                               المتبقي: {inv.remainingAmount} ج.م
+                             </div>
+                          ) : null}
+                        </div>
+                      )}
+                      <button 
+                        className="btn btn-ghost btn-sm" 
+                        style={{ color: 'var(--error)', padding: '4px 8px', fontSize: 16 }} 
+                        onClick={() => handleDeleteInvoice(inv)}
+                        title="حذف هذا الدخل"
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

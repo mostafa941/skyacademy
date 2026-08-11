@@ -99,3 +99,39 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const currentUser = await getCurrentUser(req);
+    if (!currentUser || currentUser.role !== 'admin') {
+      return NextResponse.json({ error: 'غير مصرح أو ليس لديك صلاحية أدمن' }, { status: 403 });
+    }
+    await connectToDatabase();
+
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+    if (!id) {
+      return NextResponse.json({ error: 'معرف الدفع مطلوب' }, { status: 400 });
+    }
+
+    const payment = await Payment.findById(id);
+    if (!payment) {
+      return NextResponse.json({ error: 'عملية الدفع غير موجودة' }, { status: 404 });
+    }
+
+    if (payment.teacher && payment.amount > 0) {
+      const teacher = await Teacher.findById(payment.teacher);
+      if (teacher) {
+        const teacherCut = (payment.amount * (teacher.teacherPercentage || 50)) / 100;
+        await Teacher.findByIdAndUpdate(payment.teacher, {
+          $inc: { balance: -teacherCut },
+        });
+      }
+    }
+
+    await Payment.findByIdAndDelete(id);
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

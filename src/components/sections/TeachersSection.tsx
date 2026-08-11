@@ -88,6 +88,17 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
     status: 'paid' as 'paid' | 'unpaid' | 'partial',
   });
 
+  // Add Student/Trainee Modal (Inside Teacher/Trainer Profile)
+  const [showAddStudentModal, setShowAddStudentModal] = useState(false);
+  const [addStudentForm, setAddStudentForm] = useState({
+    name: '',
+    phone: '',
+    parentPhone: '',
+    monthlyFee: 0,
+    paymentStatus: 'unpaid' as 'paid' | 'unpaid',
+  });
+  const [addingStudent, setAddingStudent] = useState(false);
+
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
   // Forms
@@ -300,6 +311,87 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
       }
     } catch {
       showToast('خطأ في التحديث', 'error');
+    }
+  };
+
+  // Add Student/Trainee inside teacher profile
+  const handleAddStudent = async () => {
+    if (!selectedStaff) return;
+    if (!addStudentForm.name || !addStudentForm.phone) {
+      showToast('يرجى إدخال اسم الطالب ورقم الفون على الأقل', 'error');
+      return;
+    }
+    setAddingStudent(true);
+    try {
+      const isTrainer = staffType === 'trainer';
+      const gradeValue = isTrainer ? 'متدرب' : selectedProfileGrade;
+      const studentType = isTrainer ? 'trainee' : 'student';
+      const res = await fetch('/api/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: addStudentForm.name,
+          phone: addStudentForm.phone,
+          parentPhone: addStudentForm.parentPhone || addStudentForm.phone,
+          subjectName: selectedStaff.subjectName,
+          teacherId: selectedStaff.id,
+          grade: gradeValue,
+          monthlyFee: addStudentForm.monthlyFee,
+          type: studentType,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        // If paid, register payment immediately
+        if (addStudentForm.paymentStatus === 'paid' && addStudentForm.monthlyFee > 0) {
+          const currentMonth = new Date().toISOString().substring(0, 7);
+          await fetch('/api/payments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              studentId: data.student._id,
+              month: currentMonth,
+              amount: addStudentForm.monthlyFee,
+              paymentType: 'monthly',
+              paymentReason: 'دفع عند التسجيل',
+              remainingAmount: 0,
+              remainingReason: '',
+              status: 'paid',
+            }),
+          });
+        }
+        showToast(`تم إضافة ${isTrainer ? 'المتدرب' : 'الطالب'} بنجاح ✅`);
+        setShowAddStudentModal(false);
+        setAddStudentForm({ name: '', phone: '', parentPhone: '', monthlyFee: 0, paymentStatus: 'unpaid' });
+        loadTeacherStudents(selectedStaff.id);
+        refreshList();
+      } else {
+        showToast(data.error || 'حدث خطأ أثناء الإضافة', 'error');
+      }
+    } catch {
+      showToast('خطأ في الاتصال بالخادم', 'error');
+    } finally {
+      setAddingStudent(false);
+    }
+  };
+
+  // Delete Student/Trainee from teacher profile
+  const handleDeleteStudent = async (studentId: string, studentName: string) => {
+    if (!selectedStaff) return;
+    const isTrainer = staffType === 'trainer';
+    if (!confirm(`هل تريد حذف ${isTrainer ? 'المتدرب' : 'الطالب'} "${studentName}" نهائياً؟`)) return;
+    try {
+      const res = await fetch(`/api/students?id=${studentId}`, { method: 'DELETE' });
+      if (res.ok) {
+        showToast(`تم حذف ${isTrainer ? 'المتدرب' : 'الطالب'} بنجاح`);
+        loadTeacherStudents(selectedStaff.id);
+        refreshList();
+      } else {
+        const d = await res.json();
+        showToast(d.error || 'خطأ أثناء الحذف', 'error');
+      }
+    } catch {
+      showToast('خطأ في الاتصال بالخادم', 'error');
     }
   };
 
@@ -521,8 +613,12 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
             {/* Teacher's/Trainer's Students Table */}
             {staffType === 'trainer' ? (
               <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                <div style={{ padding: 20, borderBottom: '1px solid var(--border)' }}>
+                <div style={{ padding: 20, borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
                   <h3 style={{ fontSize: 18, fontWeight: 800 }}>🏋️ قائمة متدربي المدرب ({teacherStudents.length}) ومتابعة الدفع</h3>
+                  <button className="btn btn-primary btn-sm" onClick={() => {
+                    setAddStudentForm({ name: '', phone: '', parentPhone: '', monthlyFee: 0, paymentStatus: 'unpaid' });
+                    setShowAddStudentModal(true);
+                  }}>➕ إضافة متدرب</button>
                 </div>
                 {loadingStudents ? (
                   <div style={{ textAlign: 'center', padding: '40px 0' }}>
@@ -568,20 +664,30 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
                               )}
                             </td>
                             <td>
-                              <button className="btn btn-primary btn-sm" onClick={() => {
-                                setSelectedStudentForPay(ts);
-                                setPayForm({
-                                  amount: ts.monthlyFee,
-                                  paymentType: ts.paymentType || 'monthly',
-                                  paymentReason: ts.paymentType === 'session' ? 'دفع حصة' : 'اشتراك شهري',
-                                  remainingAmount: 0,
-                                  remainingReason: '',
-                                  status: 'paid'
-                                });
-                                setShowPayModal(true);
-                              }}>
-                                تسجيل دفع
-                              </button>
+                              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                <button className="btn btn-primary btn-sm" onClick={() => {
+                                  setSelectedStudentForPay(ts);
+                                  setPayForm({
+                                    amount: ts.monthlyFee,
+                                    paymentType: ts.paymentType || 'monthly',
+                                    paymentReason: ts.paymentType === 'session' ? 'دفع حصة' : 'اشتراك شهري',
+                                    remainingAmount: 0,
+                                    remainingReason: '',
+                                    status: 'paid'
+                                  });
+                                  setShowPayModal(true);
+                                }}>
+                                  تسجيل دفع
+                                </button>
+                                <button
+                                  className="btn btn-ghost btn-sm"
+                                  style={{ color: 'var(--error)', padding: '4px 8px', fontSize: 16 }}
+                                  title="حذف المتدرب"
+                                  onClick={() => handleDeleteStudent(ts.id, ts.name)}
+                                >
+                                  🗑️
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -679,9 +785,15 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
                     <div>
                       <h3 style={{ fontSize: 18, fontWeight: 800 }}>👨‍🎓 طلاب {selectedProfileGrade} للمدرس ({teacherStudents.filter(ts => ts.grade === selectedProfileGrade).length} طلاب)</h3>
                     </div>
-                    <button className="btn btn-secondary btn-sm" onClick={() => { setProfileView('stages'); setSelectedProfileGrade(''); }}>
-                      ← عودة للمراحل التعليمية
-                    </button>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <button className="btn btn-primary btn-sm" onClick={() => {
+                        setAddStudentForm({ name: '', phone: '', parentPhone: '', monthlyFee: 0, paymentStatus: 'unpaid' });
+                        setShowAddStudentModal(true);
+                      }}>➕ إضافة طالب</button>
+                      <button className="btn btn-secondary btn-sm" onClick={() => { setProfileView('stages'); setSelectedProfileGrade(''); }}>
+                        ← عودة للمراحل التعليمية
+                      </button>
+                    </div>
                   </div>
                   {loadingStudents ? (
                     <div style={{ textAlign: 'center', padding: '40px 0' }}>
@@ -728,20 +840,30 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
                                   )}
                                 </td>
                                 <td>
-                                  <button className="btn btn-primary btn-sm" onClick={() => {
-                                    setSelectedStudentForPay(ts);
-                                    setPayForm({
-                                      amount: ts.monthlyFee,
-                                      paymentType: ts.paymentType || 'monthly',
-                                      paymentReason: ts.paymentType === 'session' ? 'دفع حصة' : 'اشتراك شهري',
-                                      remainingAmount: 0,
-                                      remainingReason: '',
-                                      status: 'paid'
-                                    });
-                                    setShowPayModal(true);
-                                  }}>
-                                    تسجيل دفع
-                                  </button>
+                                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                    <button className="btn btn-primary btn-sm" onClick={() => {
+                                      setSelectedStudentForPay(ts);
+                                      setPayForm({
+                                        amount: ts.monthlyFee,
+                                        paymentType: ts.paymentType || 'monthly',
+                                        paymentReason: ts.paymentType === 'session' ? 'دفع حصة' : 'اشتراك شهري',
+                                        remainingAmount: 0,
+                                        remainingReason: '',
+                                        status: 'paid'
+                                      });
+                                      setShowPayModal(true);
+                                    }}>
+                                      تسجيل دفع
+                                    </button>
+                                    <button
+                                      className="btn btn-ghost btn-sm"
+                                      style={{ color: 'var(--error)', padding: '4px 8px', fontSize: 16 }}
+                                      title="حذف الطالب"
+                                      onClick={() => handleDeleteStudent(ts.id, ts.name)}
+                                    >
+                                      🗑️
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             ))}
@@ -1040,6 +1162,102 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                 <button className="btn btn-primary" onClick={handleSaveStudentPayment} style={{ flex: 1 }}>حفظ الدفع</button>
                 <button className="btn btn-ghost" onClick={() => setShowPayModal(false)}>إلغاء</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Student/Trainee Modal inside Teacher Profile */}
+      {showAddStudentModal && selectedStaff && (
+        <div className="modal-backdrop" onClick={() => setShowAddStudentModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>
+              {staffType === 'trainer' ? '🏋️ إضافة متدرب جديد' : '👨‍🎓 إضافة طالب جديد'}
+            </h2>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
+              {staffType === 'trainer'
+                ? `المدرب: ${selectedStaff.name} | التخصص: ${selectedStaff.subjectName}`
+                : `المدرس: ${selectedStaff.name} | المادة: ${selectedStaff.subjectName} | الصف: ${selectedProfileGrade}`
+              }
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className="input-group">
+                <label className="input-label">الاسم كامل *</label>
+                <input
+                  className="input"
+                  placeholder={staffType === 'trainer' ? 'اسم المتدرب' : 'اسم الطالب'}
+                  value={addStudentForm.name}
+                  onChange={(e) => setAddStudentForm({ ...addStudentForm, name: e.target.value })}
+                />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="input-group">
+                  <label className="input-label">رقم الفون *</label>
+                  <input
+                    className="input"
+                    placeholder="01xxxxxxxxx"
+                    value={addStudentForm.phone}
+                    onChange={(e) => setAddStudentForm({ ...addStudentForm, phone: e.target.value })}
+                  />
+                </div>
+                <div className="input-group">
+                  <label className="input-label">رقم فون ولي الأمر</label>
+                  <input
+                    className="input"
+                    placeholder="01xxxxxxxxx"
+                    value={addStudentForm.parentPhone}
+                    onChange={(e) => setAddStudentForm({ ...addStudentForm, parentPhone: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="input-group">
+                  <label className="input-label">المصاريف الشهرية (ج.م)</label>
+                  <input
+                    className="input"
+                    type="number"
+                    placeholder="0"
+                    value={addStudentForm.monthlyFee}
+                    onChange={(e) => setAddStudentForm({ ...addStudentForm, monthlyFee: +e.target.value })}
+                  />
+                </div>
+                <div className="input-group">
+                  <label className="input-label">حالة الدفع</label>
+                  <select
+                    className="input"
+                    value={addStudentForm.paymentStatus}
+                    onChange={(e) => setAddStudentForm({ ...addStudentForm, paymentStatus: e.target.value as any })}
+                  >
+                    <option value="unpaid">لم يدفع بعد ❌</option>
+                    <option value="paid">دفع الآن ✅</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Auto-filled info display */}
+              <div style={{ background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', padding: 12, border: '1px solid var(--border)', fontSize: 13, color: 'var(--text-secondary)' }}>
+                <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>📋 بيانات تُضاف تلقائياً:</div>
+                <div>🧑‍🏫 المدرس/المدرب: <strong style={{ color: 'var(--accent-orange)' }}>{selectedStaff.name}</strong></div>
+                <div>📚 المادة/التخصص: <strong style={{ color: 'var(--accent-orange)' }}>{selectedStaff.subjectName}</strong></div>
+                {staffType === 'teacher' && selectedProfileGrade && (
+                  <div>🏫 الصف الدراسي: <strong style={{ color: 'var(--accent-orange)' }}>{selectedProfileGrade}</strong></div>
+                )}
+                {staffType === 'trainer' && (
+                  <div>🏋️ النوع: <strong style={{ color: 'var(--accent-orange)' }}>متدرب</strong></div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleAddStudent}
+                  disabled={addingStudent}
+                  style={{ flex: 1 }}
+                >
+                  {addingStudent ? 'جاري الإضافة...' : `✅ إضافة ${staffType === 'trainer' ? 'المتدرب' : 'الطالب'}`}
+                </button>
+                <button className="btn btn-ghost" onClick={() => setShowAddStudentModal(false)}>إلغاء</button>
               </div>
             </div>
           </div>
