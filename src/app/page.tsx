@@ -16,9 +16,10 @@ export default function LandingPage() {
   // Modals
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [showSignupModal, setShowSignupModal] = useState(false);
+  const [forgotStep, setForgotStep] = useState(1);
 
   // Forms
-  const [forgotForm, setForgotForm] = useState({ role: 'admin', email: '' });
+  const [forgotForm, setForgotForm] = useState({ role: 'admin', email: '', otp: '', newPassword: '' });
   const [signupForm, setSignupForm] = useState({ name: '', phone: '', email: '', password: '' });
 
   // Check existing session
@@ -113,10 +114,14 @@ export default function LandingPage() {
     e.preventDefault();
     setLoading(true);
     try {
+      let action = 'sendOtp';
+      if (forgotStep === 2) action = 'verifyOtp';
+      if (forgotStep === 3) action = 'resetPassword';
+
       const res = await fetch('/api/auth/reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(forgotForm),
+        body: JSON.stringify({ ...forgotForm, action }),
       });
       const data = await res.json();
 
@@ -125,8 +130,18 @@ export default function LandingPage() {
         return;
       }
 
-      showToast(data.message || 'تم إرسال كلمة المرور بنجاح!', 'success');
-      setShowForgotModal(false);
+      if (action === 'sendOtp') {
+        showToast(data.message || 'تم إرسال رمز التحقق OTP إلى الإيميل!', 'success');
+        setForgotStep(2);
+      } else if (action === 'verifyOtp') {
+        showToast(data.message || 'رمز التحقق صحيح، أدخل الباسورد الجديد', 'success');
+        setForgotStep(3);
+      } else if (action === 'resetPassword') {
+        showToast(data.message || 'تم تغيير كلمة المرور بنجاح!', 'success');
+        setShowForgotModal(false);
+        setForgotStep(1);
+        setForgotForm({ role: 'admin', email: '', otp: '', newPassword: '' });
+      }
     } catch {
       showToast('حدث خطأ في الاتصال بالسيرفر', 'error');
     } finally {
@@ -256,21 +271,45 @@ export default function LandingPage() {
           <div className="modal card-glass" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400 }}>
             <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16 }}>🔑 استعادة كلمة المرور</h2>
             <form onSubmit={handleForgotSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div className="input-group">
-                <label className="input-label">نوع الحساب</label>
-                <select className="input" value={forgotForm.role} onChange={e => setForgotForm({ ...forgotForm, role: e.target.value })}>
-                  <option value="admin">أدمن</option>
-                  <option value="secretary">سكرتيرة</option>
-                </select>
-              </div>
-              <div className="input-group">
-                <label className="input-label">{forgotForm.role === 'admin' ? 'أدخل إيميل جديد لإرسال كلمة السر إليه' : 'أدخل الإيميل المسجل مسبقاً'}</label>
-                <input className="input" type="email" required placeholder="example@email.com" value={forgotForm.email} onChange={e => setForgotForm({ ...forgotForm, email: e.target.value })} />
-                {forgotForm.role === 'admin' && <p style={{ fontSize: 11, color: 'var(--accent-orange)', marginTop: 4 }}>تحذير: سيتم إرسال الباسورد الجديد إلى هذا الإيميل لتتمكن من الدخول.</p>}
-              </div>
+              
+              {forgotStep === 1 && (
+                <>
+                  <div className="input-group">
+                    <label className="input-label">نوع الحساب</label>
+                    <select className="input" value={forgotForm.role} onChange={e => setForgotForm({ ...forgotForm, role: e.target.value })}>
+                      <option value="admin">أدمن</option>
+                      <option value="secretary">سكرتيرة</option>
+                    </select>
+                  </div>
+                  <div className="input-group">
+                    <label className="input-label">{forgotForm.role === 'admin' ? 'أدخل إيميل لإرسال رمز التحقق إليه' : 'أدخل الإيميل المسجل مسبقاً'}</label>
+                    <input className="input" type="email" required placeholder="example@email.com" value={forgotForm.email} onChange={e => setForgotForm({ ...forgotForm, email: e.target.value })} />
+                    <p style={{ fontSize: 11, color: 'var(--accent-orange)', marginTop: 4 }}>
+                      سيتم إرسال رمز التحقق (OTP) إلى loul17111999@gmail.com
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {forgotStep === 2 && (
+                <div className="input-group">
+                  <label className="input-label">رمز التحقق (OTP)</label>
+                  <input className="input" type="text" required placeholder="أدخل الـ 6 أرقام" value={forgotForm.otp} onChange={e => setForgotForm({ ...forgotForm, otp: e.target.value })} />
+                </div>
+              )}
+
+              {forgotStep === 3 && (
+                <div className="input-group">
+                  <label className="input-label">كلمة المرور الجديدة</label>
+                  <input className="input" type="password" required placeholder="أدخل كلمة المرور الجديدة" value={forgotForm.newPassword} onChange={e => setForgotForm({ ...forgotForm, newPassword: e.target.value })} />
+                </div>
+              )}
+
               <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
-                <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={loading}>إرسال الباسورد</button>
-                <button type="button" className="btn btn-ghost" onClick={() => setShowForgotModal(false)}>إلغاء</button>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={loading}>
+                  {forgotStep === 1 ? 'إرسال OTP' : forgotStep === 2 ? 'تحقق' : 'تغيير كلمة المرور'}
+                </button>
+                <button type="button" className="btn btn-ghost" onClick={() => { setShowForgotModal(false); setForgotStep(1); }}>إلغاء</button>
               </div>
             </form>
           </div>

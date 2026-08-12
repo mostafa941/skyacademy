@@ -9,6 +9,8 @@ export interface IUser extends Document {
   phone: string;
   password?: string;
   role: UserRole;
+  resetOtp?: string;
+  resetOtpExpiry?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -38,6 +40,12 @@ const UserSchema = new Schema<IUser>(
       enum: ['admin', 'secretary'],
       required: true,
       default: 'secretary',
+    },
+    resetOtp: {
+      type: String,
+    },
+    resetOtpExpiry: {
+      type: Date,
     },
   },
   {
