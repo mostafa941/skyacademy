@@ -46,8 +46,12 @@ export async function POST(req: NextRequest) {
       targetUser.resetOtpExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
       await targetUser.save();
 
-      // Force email to be loul17111999@gmail.com as requested
-      const targetEmail = 'loul17111999@gmail.com';
+      // Use target user's email or provided email
+      const targetEmail = targetUser.email || searchEmail || email;
+      
+      if (!targetEmail) {
+        return NextResponse.json({ error: 'لم يتم العثور على بريد إلكتروني صالح لإرسال الرمز' }, { status: 400 });
+      }
       
       // Send email
       let transporter;

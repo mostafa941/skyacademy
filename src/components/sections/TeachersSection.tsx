@@ -285,6 +285,26 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
     }
   };
 
+  const handleResetLoan = async () => {
+    if (!selectedStaff || selectedStaff.balance >= 0) return;
+    if (!confirm('هل أنت متأكد من إزالة السلفة وتصفير الرصيد؟')) return;
+    
+    try {
+      const res = await fetch(`/api/teachers/${selectedStaff.id}/reset-loan`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || 'تم إزالة السلفة بنجاح');
+        refreshList();
+      } else {
+        showToast(data.error || 'حدث خطأ أثناء إزالة السلفة', 'error');
+      }
+    } catch {
+      showToast('خطأ في الاتصال', 'error');
+    }
+  };
+
   const handleSaveStudentPayment = async () => {
     if (!selectedStudentForPay || !selectedStaff) return;
     try {
@@ -563,6 +583,9 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
               <div style={{ marginRight: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button className="btn btn-secondary" onClick={() => setShowAttModal(true)}>📅 تسجيل حضور</button>
                 {isAdmin && <button className="btn btn-secondary" onClick={() => setShowLoanModal(true)}>💸 إضافة سلفة</button>}
+                {isAdmin && selectedStaff?.balance < 0 && (
+                  <button className="btn btn-ghost" style={{ color: 'var(--accent-orange)' }} onClick={handleResetLoan}>💸 إزالة السلفة</button>
+                )}
                 <button className="btn btn-secondary" onClick={() => setShowPdf(true)}>📄 تصدير PDF</button>
                 <button className="btn btn-secondary" onClick={() => {
                   setStaffForm({
