@@ -12,7 +12,7 @@ import NotesSection from './sections/NotesSection';
 import StudentsPaymentStatusSection from './sections/StudentsPaymentStatusSection';
 import UsersSection from './sections/UsersSection';
 import SettlementsSection from './sections/SettlementsSection';
-import NotificationsPanel from './NotificationsPanel';
+import NotificationsSection from './sections/NotificationsSection';
 
 interface User {
   id: string;
@@ -41,6 +41,7 @@ const navItems: NavItem[] = [
   { id: 'paid_students', label: 'سجل المسددين', icon: '🟢' },
   { id: 'partial_students', label: 'عليهم مبالغ متبقية', icon: '🟡' },
   { id: 'unpaid_students', label: 'غير المسددين', icon: '🔴' },
+  { id: 'notifications', label: 'الإشعارات', icon: '🔔' },
 ];
 
 export default function DashboardLayout({ role }: { children?: React.ReactNode; role: 'admin' | 'secretary' }) {
@@ -110,10 +111,10 @@ export default function DashboardLayout({ role }: { children?: React.ReactNode; 
           </div>
         </div>
 
-        {/* User Info & Notifications */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+        {/* User Info */}
+        <div style={{ marginBottom: 20 }}>
           <div style={{
-            flex: 1, background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)',
+            background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)',
             padding: '14px 16px', border: '1px solid var(--border)',
           }}>
             <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-primary)', marginBottom: 4 }}>
@@ -123,7 +124,6 @@ export default function DashboardLayout({ role }: { children?: React.ReactNode; 
               {user.role === 'admin' ? '⚡ الأدمن (مدير النظام)' : '💼 سكرتارية الأكاديمية'}
             </div>
           </div>
-          <NotificationsPanel />
         </div>
 
         {/* Navigation Items */}
@@ -185,10 +185,7 @@ export default function DashboardLayout({ role }: { children?: React.ReactNode; 
             >
               ☰
             </button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <NotificationsPanel />
-              <div style={{ fontWeight: 800, color: 'var(--accent-orange)', fontSize: 16 }}>Sky Academy 🌤️</div>
-            </div>
+            <div style={{ fontWeight: 800, color: 'var(--accent-orange)', fontSize: 16 }}>Sky Academy 🌤️</div>
           </div>
 
           {/* Dynamic Section Rendering */}
@@ -204,6 +201,7 @@ export default function DashboardLayout({ role }: { children?: React.ReactNode; 
           {activeSection === 'paid_students' && <StudentsPaymentStatusSection paymentStatus="paid" />}
           {activeSection === 'partial_students' && <StudentsPaymentStatusSection paymentStatus="partial" />}
           {activeSection === 'unpaid_students' && <StudentsPaymentStatusSection paymentStatus="unpaid" />}
+          {activeSection === 'notifications' && <NotificationsSection />}
           {activeSection === 'users' && user.role === 'admin' && <UsersSection userRole={user.role} />}
         </div>
       </main>

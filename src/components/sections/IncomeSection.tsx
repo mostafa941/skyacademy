@@ -37,10 +37,21 @@ export default function IncomeSection() {
   // New Search & Payment States
   const [search, setSearch] = useState('');
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [paySearchQuery, setPaySearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searchingStudents, setSearchingStudents] = useState(false);
   const [selectedStudentForPay, setSelectedStudentForPay] = useState<any>(null);
+  
+  // Dropdown states for students
+  const [selectedStage, setSelectedStage] = useState<'primary' | 'prep' | 'secondary'>('secondary');
+  const [selectedGrade, setSelectedGrade] = useState('الصف الأول الثانوي');
+  const [selectedTeacherId, setSelectedTeacherId] = useState('');
+  
+  // Dropdown states for trainees
+  const [selectedTrainerId, setSelectedTrainerId] = useState('');
+
+  const primaryGrades = ['الصف الأول الابتدائي','الصف الثاني الابتدائي','الصف الثالث الابتدائي','الصف الرابع الابتدائي','الصف الخامس الابتدائي','الصف السادس الابتدائي'];
+  const prepGrades = ['الصف الأول الإعدادي','الصف الثاني الإعدادي','الصف الثالث الإعدادي'];
+  const secondaryGrades = ['الصف الأول الثانوي','الصف الثاني الثانوي','الصف الثالث الثانوي'];
   
   const [payForm, setPayForm] = useState({
     type: 'student' as 'student' | 'trainee',
@@ -68,15 +79,20 @@ export default function IncomeSection() {
     return `${displayHours}:${minutes} ${period}`;
   };
 
-  const handleSearchStudents = async (query: string) => {
-    setPaySearchQuery(query);
-    if (query.trim().length < 3) {
-      setSearchResults([]);
-      return;
-    }
+  const fetchStudentsByFilters = async (type: 'student' | 'trainee', gradeStr?: string, tId?: string) => {
     setSearchingStudents(true);
+    setSearchResults([]);
+    setSelectedStudentForPay(null);
     try {
-      const res = await fetch(`/api/students?search=${encodeURIComponent(query)}&type=${payForm.type}`);
+      let url = `/api/students?type=${type}`;
+      if (type === 'student') {
+        if (gradeStr) url += `&grade=${encodeURIComponent(gradeStr)}`;
+        if (tId) url += `&teacherId=${tId}`;
+      } else {
+        if (tId) url += `&teacherId=${tId}`;
+      }
+      
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setSearchResults(data.students || []);
@@ -86,6 +102,15 @@ export default function IncomeSection() {
     } finally {
       setSearchingStudents(false);
     }
+  };
+
+  const handleStageChange = (stage: 'primary' | 'prep' | 'secondary') => {
+    setSelectedStage(stage);
+    let defGrade = 'الصف الأول الثانوي';
+    if (stage === 'primary') defGrade = 'الصف الأول الابتدائي';
+    else if (stage === 'prep') defGrade = 'الصف الأول الإعدادي';
+    setSelectedGrade(defGrade);
+    fetchStudentsByFilters('student', defGrade, selectedTeacherId);
   };
 
   const handleSelectStudent = (st: any) => {
@@ -124,7 +149,6 @@ export default function IncomeSection() {
         showToast('تم تسجيل دفع الطالب وزيادة رصيد معلمه بنجاح');
         setShowPaymentModal(false);
         setSelectedStudentForPay(null);
-        setPaySearchQuery('');
         setSearchResults([]);
         loadIncome();
       } else {
@@ -324,6 +348,13 @@ export default function IncomeSection() {
               remainingReason: '',
               status: 'paid',
             });
+            setSelectedStudentForPay(null);
+            setSearchResults([]);
+            setSelectedStage('secondary');
+            setSelectedGrade('الصف الأول الثانوي');
+            setSelectedTeacherId('');
+            setSelectedTrainerId('');
+            fetchStudentsByFilters('student', 'الصف الأول الثانوي', '');
             setShowPaymentModal(true);
           }}>
             💰 تسجيل دفع طالب / متدرب
@@ -408,54 +439,25 @@ export default function IncomeSection() {
               </tr>
             </thead>
             <tbody>
-              {/* Inline Add Row */}
-              <tr style={{ background: 'var(--bg-secondary)' }}>
-                <td style={{ textAlign: 'center', fontWeight: 'bold' }}>+</td>
+              {/* Quick Add Row - opens payment modal */}
+              <tr
+                style={{ background: 'var(--bg-secondary)', cursor: 'pointer' }}
+                onClick={() => {
+                  setPayForm({ type: 'student', studentId: '', amount: 0, paymentType: 'monthly', paymentReason: 'اشتراك شهري', remainingAmount: 0, remainingReason: '', status: 'paid' });
+                  setSelectedStudentForPay(null);
+                  setSearchResults([]);
+                  setSelectedStage('secondary');
+                  setSelectedGrade('الصف الأول الثانوي');
+                  setSelectedTeacherId('');
+                  setSelectedTrainerId('');
+                  fetchStudentsByFilters('student', 'الصف الأول الثانوي', '');
+                  setShowPaymentModal(true);
+                }}
+              >
+                <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: 20, color: 'var(--accent-orange)' }}>+</td>
                 <td style={{ color: 'var(--text-muted)', fontSize: 13 }}>الآن</td>
-                <td>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    <input className="input" placeholder="اسم المشترك" style={{ padding: '6px 8px', minWidth: 100, flex: 1, fontSize: 13 }} value={inlineIncome.name} onChange={e => setInlineIncome({...inlineIncome, name: e.target.value})} />
-                    <select className="input" style={{ padding: '6px', fontSize: 12, width: 75 }} value={inlineIncome.staffType} onChange={e => setInlineIncome({...inlineIncome, staffType: e.target.value as any, teacherId: '', subjectName: ''})}>
-                      <option value="teacher">طالب</option>
-                      <option value="trainer">متدرب</option>
-                    </select>
-                  </div>
-                </td>
-                <td>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    <select 
-                      className="input" 
-                      style={{ padding: '6px', fontSize: 12, flex: 1 }} 
-                      value={inlineIncome.teacherId} 
-                      onChange={e => {
-                        const id = e.target.value;
-                        const list = inlineIncome.staffType === 'teacher' ? teachers : trainers;
-                        const selected = list.find(t => t.id === id);
-                        setInlineIncome({...inlineIncome, teacherId: id, subjectName: selected?.subjectName || ''});
-                      }}
-                    >
-                      <option value="">اختر {inlineIncome.staffType === 'teacher' ? 'المدرس' : 'المدرب'}</option>
-                      {(inlineIncome.staffType === 'teacher' ? teachers : trainers).map(t => (
-                        <option key={t.id} value={t.id}>{t.name}</option>
-                      ))}
-                    </select>
-                    <input 
-                      className="input" 
-                      placeholder="النوع" 
-                      style={{ padding: '6px', fontSize: 12, width: 80, background: 'var(--bg-disabled)' }} 
-                      value={inlineIncome.subjectName} 
-                      disabled
-                    />
-                  </div>
-                </td>
-                <td>
-                  <input className="input" type="number" placeholder="المبلغ" style={{ padding: '6px 8px', width: 90, fontSize: 13 }} value={inlineIncome.amount} onChange={e => setInlineIncome({...inlineIncome, amount: e.target.value})} />
-                </td>
-                <td style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input className="input" placeholder="ملاحظات" style={{ padding: '6px 8px', flex: 1, fontSize: 13 }} value={inlineIncome.notes} onChange={e => setInlineIncome({...inlineIncome, notes: e.target.value})} />
-                  <button className="btn btn-primary btn-sm" onClick={handleAddInlineIncome} disabled={addingInline}>
-                    {addingInline ? '⏳' : 'إضافة'}
-                  </button>
+                <td colSpan={4} style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+                  💰 اضغط هنا لتسجيل دفع طالب أو متدرب...
                 </td>
               </tr>
               {filteredInvoices.map((inv, index) => (
@@ -551,7 +553,7 @@ export default function IncomeSection() {
 
       {/* Modal: Student / Trainee Payment */}
       {showPaymentModal && (
-        <div className="modal-backdrop" onClick={() => { setShowPaymentModal(false); setSelectedStudentForPay(null); setPaySearchQuery(''); setSearchResults([]); }}>
+        <div className="modal-backdrop" onClick={() => { setShowPaymentModal(false); setSelectedStudentForPay(null); setSearchResults([]); }}>
           <div className="modal card-glass" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 500 }}>
             <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16 }}>💰 تسجيل دفع (طالب / متدرب)</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -563,10 +565,12 @@ export default function IncomeSection() {
                   className="input" 
                   value={payForm.type} 
                   onChange={(e) => {
-                    setPayForm({ ...payForm, type: e.target.value as any, studentId: '' });
+                    const newType = e.target.value as any;
+                    setPayForm({ ...payForm, type: newType, studentId: '' });
                     setSelectedStudentForPay(null);
-                    setPaySearchQuery('');
                     setSearchResults([]);
+                    if (newType === 'student') fetchStudentsByFilters('student', selectedGrade, selectedTeacherId);
+                    else fetchStudentsByFilters('trainee', undefined, selectedTrainerId);
                   }}
                 >
                   <option value="student">طالب تعليمي 🎓</option>
@@ -574,38 +578,79 @@ export default function IncomeSection() {
                 </select>
               </div>
 
-              {/* Search by Phone / Name */}
-              <div className="input-group">
-                <label className="input-label">ابحث برقم الهاتف أو الاسم (3 حروف على الأقل) *</label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input 
-                    className="input" 
-                    placeholder="رقم الهاتف أو الاسم..." 
-                    value={paySearchQuery} 
-                    onChange={(e) => handleSearchStudents(e.target.value)}
-                  />
-                </div>
-                {searchingStudents && <div style={{ fontSize: 12, color: 'var(--accent-orange)', marginTop: 4 }}>جاري البحث...</div>}
-              </div>
-
-              {/* Search Results */}
-              {searchResults.length > 0 && !selectedStudentForPay && (
-                <div style={{ maxHeight: 150, overflowY: 'auto', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 8 }}>
-                  {searchResults.map(st => (
-                    <div 
-                      key={st.id} 
-                      onClick={() => handleSelectStudent(st)} 
-                      style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', cursor: 'pointer', borderRadius: 'var(--radius-sm)' }}
-                      className="sidebar-item"
-                    >
-                      <div style={{ fontWeight: 700, fontSize: 14 }}>{st.name}</div>
-                      <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                        الهاتف: {st.phone} | {st.type === 'trainee' ? `المدرب: ${st.teacherName}` : `${st.grade} - المدرس: ${st.teacherName}`}
-                      </div>
+              {/* Filters based on Type */}
+              {payForm.type === 'student' ? (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div className="input-group">
+                      <label className="input-label">المرحلة الدراسية</label>
+                      <select className="input" value={selectedStage} onChange={(e) => handleStageChange(e.target.value as any)}>
+                        <option value="primary">الابتدائية 🎒</option>
+                        <option value="prep">الإعدادية 🏫</option>
+                        <option value="secondary">الثانوية 🎓</option>
+                      </select>
                     </div>
-                  ))}
+                    <div className="input-group">
+                      <label className="input-label">السنة الدراسية</label>
+                      <select className="input" value={selectedGrade} onChange={(e) => {
+                        setSelectedGrade(e.target.value);
+                        fetchStudentsByFilters('student', e.target.value, selectedTeacherId);
+                      }}>
+                        {selectedStage === 'primary' && primaryGrades.map(g => <option key={g} value={g}>{g}</option>)}
+                        {selectedStage === 'prep' && prepGrades.map(g => <option key={g} value={g}>{g}</option>)}
+                        {selectedStage === 'secondary' && secondaryGrades.map(g => <option key={g} value={g}>{g}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="input-group">
+                    <label className="input-label">المدرس</label>
+                    <select className="input" value={selectedTeacherId} onChange={(e) => {
+                      setSelectedTeacherId(e.target.value);
+                      fetchStudentsByFilters('student', selectedGrade, e.target.value);
+                    }}>
+                      <option value="">جميع المدرسين</option>
+                      {teachers.map(t => (
+                        <option key={t.id} value={t.id}>{t.name} - {t.subjectName}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              ) : (
+                <div className="input-group">
+                  <label className="input-label">المدرب</label>
+                  <select className="input" value={selectedTrainerId} onChange={(e) => {
+                    setSelectedTrainerId(e.target.value);
+                    fetchStudentsByFilters('trainee', undefined, e.target.value);
+                  }}>
+                    <option value="">جميع المدربين</option>
+                    {trainers.map(t => (
+                      <option key={t.id} value={t.id}>{t.name} - {t.subjectName}</option>
+                    ))}
+                  </select>
                 </div>
               )}
+
+              {/* Select Participant */}
+              <div className="input-group">
+                <label className="input-label">اسم المشترك * {searchingStudents && <span style={{fontSize: 12, color: 'var(--accent-orange)'}}>(جاري التحميل...)</span>}</label>
+                <select 
+                  className="input" 
+                  value={selectedStudentForPay?.id || ''} 
+                  onChange={(e) => {
+                    const st = searchResults.find(s => s.id === e.target.value);
+                    if (st) handleSelectStudent(st);
+                    else {
+                      setSelectedStudentForPay(null);
+                      setPayForm(prev => ({ ...prev, studentId: '' }));
+                    }
+                  }}
+                >
+                  <option value="">-- اختر المشترك من القائمة --</option>
+                  {searchResults.map(st => (
+                    <option key={st.id} value={st.id}>{st.name} ({st.phone})</option>
+                  ))}
+                </select>
+              </div>
 
               {/* Selected Student Details */}
               {selectedStudentForPay && (
@@ -699,7 +744,7 @@ export default function IncomeSection() {
 
               <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
                 <button className="btn btn-primary" onClick={handleSaveStudentPayment} disabled={!selectedStudentForPay} style={{ flex: 1 }}>تأكيد عملية الدفع</button>
-                <button className="btn btn-ghost" onClick={() => { setShowPaymentModal(false); setSelectedStudentForPay(null); setPaySearchQuery(''); setSearchResults([]); }}>إلغاء</button>
+                <button className="btn btn-ghost" onClick={() => { setShowPaymentModal(false); setSelectedStudentForPay(null); setSearchResults([]); }}>إلغاء</button>
               </div>
             </div>
           </div>

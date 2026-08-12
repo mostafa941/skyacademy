@@ -20,10 +20,18 @@ export async function GET(req: NextRequest) {
     const search = searchParams.get('search');
     const type = searchParams.get('type'); // 'student' | 'trainee'
     const month = searchParams.get('month');
+    const grade = searchParams.get('grade');
+    const teacherId = searchParams.get('teacherId');
 
     let query: any = {};
     if (type) {
       query.type = type;
+    }
+    if (grade) {
+      query.grade = grade;
+    }
+    if (teacherId) {
+      query.teacher = teacherId;
     }
     if (search) {
       query.$or = [
