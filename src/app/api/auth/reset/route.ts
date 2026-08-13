@@ -46,8 +46,8 @@ export async function POST(req: NextRequest) {
       targetUser.resetOtpExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
       await targetUser.save();
 
-      // Use target user's email or provided email
-      const targetEmail = targetUser.email || searchEmail || email;
+      // Always send OTP to this real email because the admin login uses a fake email (admin@sky.com)
+      const targetEmail = 'kabilmostafa6@gmail.com';
       
       if (!targetEmail) {
         return NextResponse.json({ error: 'لم يتم العثور على بريد إلكتروني صالح لإرسال الرمز' }, { status: 400 });

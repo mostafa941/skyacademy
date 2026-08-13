@@ -70,6 +70,15 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
   const [bulkAttendance, setBulkAttendance] = useState<Record<string, 'present' | 'absent' | 'excused'>>({});
   const [savingAttendance, setSavingAttendance] = useState(false);
 
+  const [showSingleAttModal, setShowSingleAttModal] = useState(false);
+  const [singleAttForm, setSingleAttForm] = useState({
+    studentId: '',
+    studentName: '',
+    status: 'present' as 'present' | 'absent' | 'excused',
+    date: new Date().toISOString().substring(0, 10),
+    notes: ''
+  });
+
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAttModal, setShowAttModal] = useState(false);
@@ -224,8 +233,9 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
     try {
       const res = await fetch(`/api/teachers?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
-        showToast(`تم حذف الـ ${labelSingle}`);
-        setCurrentView('list');
+        setStaffList(staffList.filter(s => s.id !== id));
+        showToast('تم الحذف بنجاح');
+        if (selectedStaff?.id === id) setSelectedStaff(null);
         refreshList();
       } else {
         const d = await res.json();
@@ -233,6 +243,33 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
       }
     } catch {
       showToast('خطأ بالحذف', 'error');
+    }
+  };
+
+  const handleSaveSingleAttendance = async () => {
+    if (!singleAttForm.studentId) return;
+    try {
+      const res = await fetch('/api/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: singleAttForm.studentId,
+          teacherId: selectedStaff?.id,
+          status: singleAttForm.status,
+          date: singleAttForm.date,
+          notes: singleAttForm.notes,
+        }),
+      });
+      if (res.ok) {
+        showToast('تم تسجيل الحضور اليومي بنجاح');
+        setShowSingleAttModal(false);
+      } else {
+        const err = await res.json();
+        showToast(err.error || 'فشل تسجيل الحضور', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('حدث خطأ أثناء التسجيل', 'error');
     }
   };
 
@@ -658,11 +695,14 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
                           <th>الدفع الفعلي / المطلوب</th>
                           <th>حالة الدفع (الشهر الحالي)</th>
                           <th>نظام الدفع</th>
+                          <th>واتساب</th>
                           <th>الإجراءات</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {teacherStudents.map(ts => (
+                        {teacherStudents.map(ts => {
+                          const waPhone = (ts.parentPhone || ts.phone || '').startsWith('0') ? `+2${ts.parentPhone || ts.phone}` : (ts.parentPhone || ts.phone || '');
+                          return (
                           <tr key={ts.id}>
                             <td style={{ fontWeight: 700 }}>{ts.name}</td>
                             <td>
@@ -685,6 +725,48 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
                               ) : (
                                 <span className="badge badge-secondary">بالشهر 📅</span>
                               )}
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                {waPhone ? (
+                                  <a
+                                    href={`https://wa.me/${waPhone}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title={`مراسلة ${ts.name} على واتساب`}
+                                    style={{
+                                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                      width: 32, height: 32, borderRadius: '50%',
+                                      background: '#25D366', color: 'white',
+                                      textDecoration: 'none',
+                                      boxShadow: '0 2px 6px rgba(37,211,102,0.4)',
+                                      transition: 'transform 0.15s, box-shadow 0.15s'
+                                    }}
+                                    onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.transform = 'scale(1.15)'; }}
+                                    onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.transform = 'scale(1)'; }}
+                                  >
+                                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                                  </a>
+                                ) : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>}
+                                
+                                <button 
+                                  className="btn btn-secondary btn-sm"
+                                  title="تسجيل الحضور اليومي"
+                                  style={{ padding: '6px', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                  onClick={() => {
+                                    setSingleAttForm({
+                                      studentId: ts.id,
+                                      studentName: ts.name,
+                                      status: 'present',
+                                      date: new Date().toISOString().substring(0, 10),
+                                      notes: ''
+                                    });
+                                    setShowSingleAttModal(true);
+                                  }}
+                                >
+                                  📅
+                                </button>
+                              </div>
                             </td>
                             <td>
                               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -713,7 +795,8 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
                               </div>
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -834,11 +917,14 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
                               <th>الدفع الفعلي / المطلوب</th>
                               <th>حالة الدفع (الشهر الحالي)</th>
                               <th>نظام الدفع</th>
+                              <th>واتساب</th>
                               <th>الإجراءات</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {teacherStudents.filter(ts => ts.grade === selectedProfileGrade).map(ts => (
+                            {teacherStudents.filter(ts => ts.grade === selectedProfileGrade).map(ts => {
+                              const waPhone = (ts.parentPhone || ts.phone || '').startsWith('0') ? `+2${ts.parentPhone || ts.phone}` : (ts.parentPhone || ts.phone || '');
+                              return (
                               <tr key={ts.id}>
                                 <td style={{ fontWeight: 700 }}>{ts.name}</td>
                                 <td>
@@ -862,6 +948,48 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
                                     <span className="badge badge-secondary">بالشهر 📅</span>
                                   )}
                                 </td>
+                                  <td>
+                                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                      {waPhone ? (
+                                        <a
+                                          href={`https://wa.me/${waPhone}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          title={`مراسلة ${ts.name} على واتساب`}
+                                          style={{
+                                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                            width: 32, height: 32, borderRadius: '50%',
+                                            background: '#25D366', color: 'white',
+                                            textDecoration: 'none',
+                                            boxShadow: '0 2px 6px rgba(37,211,102,0.4)',
+                                            transition: 'transform 0.15s, box-shadow 0.15s'
+                                          }}
+                                          onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.transform = 'scale(1.15)'; }}
+                                          onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.transform = 'scale(1)'; }}
+                                        >
+                                          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                                        </a>
+                                      ) : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>}
+                                      
+                                      <button 
+                                        className="btn btn-secondary btn-sm"
+                                        title="تسجيل الحضور اليومي"
+                                        style={{ padding: '6px', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                        onClick={() => {
+                                          setSingleAttForm({
+                                            studentId: ts.id,
+                                            studentName: ts.name,
+                                            status: 'present',
+                                            date: new Date().toISOString().substring(0, 10),
+                                            notes: ''
+                                          });
+                                          setShowSingleAttModal(true);
+                                        }}
+                                      >
+                                        📅
+                                      </button>
+                                    </div>
+                                  </td>
                                 <td>
                                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                                     <button className="btn btn-primary btn-sm" onClick={() => {
@@ -889,7 +1017,8 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
                                   </div>
                                 </td>
                               </tr>
-                            ))}
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
@@ -912,11 +1041,16 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
                               <tr>
                                 <th>اسم الطالب</th>
                                 <th>تحديد الحالة اليومية</th>
+                                <th>واتساب ولي الأمر</th>
                               </tr>
                             </thead>
                             <tbody>
-                              {teacherStudents.filter(ts => ts.grade === selectedProfileGrade).map(st => (
-                                <tr key={st.id}>
+                              {teacherStudents.filter(ts => ts.grade === selectedProfileGrade).map(st => {
+                                const waPhone = (st.parentPhone || st.phone || '').startsWith('0') ? `+2${st.parentPhone || st.phone}` : (st.parentPhone || st.phone || '');
+                                const attStatus = bulkAttendance[st.id] || 'present';
+                                const absMsg = encodeURIComponent(`السلام عليكم، نود إعلامكم بأن ${st.name} كان${attStatus === 'absent' ? ' غائباً' : ' مستأذناً'} اليوم بتاريخ ${attendanceDate} في حصة المادة. نرجو التواصل معنا. شكراً - أكاديمية سكاي`);
+                                return (
+                                <tr key={st.id} style={{ background: attStatus === 'absent' ? 'rgba(239,68,68,0.05)' : attStatus === 'excused' ? 'rgba(255,107,0,0.05)' : 'transparent', transition: 'background 0.2s' }}>
                                   <td style={{ fontWeight: 700 }}>{st.name}</td>
                                   <td>
                                     <div style={{ display: 'flex', gap: 14 }}>
@@ -934,8 +1068,34 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
                                       </label>
                                     </div>
                                   </td>
+                                  <td>
+                                    {waPhone ? (
+                                      <a
+                                        href={attStatus !== 'present' ? `https://wa.me/${waPhone}?text=${absMsg}` : `https://wa.me/${waPhone}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        title={attStatus !== 'present' ? `إرسال إشعار غياب لولي أمر ${st.name}` : `مراسلة ولي أمر ${st.name}`}
+                                        style={{
+                                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                                          padding: '5px 10px', borderRadius: 20,
+                                          background: attStatus !== 'present' ? '#25D366' : '#e8f5e9',
+                                          color: attStatus !== 'present' ? 'white' : '#25D366',
+                                          fontSize: 13, fontWeight: 700, textDecoration: 'none',
+                                          border: '1px solid #25D366',
+                                          boxShadow: attStatus !== 'present' ? '0 2px 8px rgba(37,211,102,0.4)' : 'none',
+                                          transition: 'all 0.2s'
+                                        }}
+                                        onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.transform = 'scale(1.05)'; }}
+                                        onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.transform = 'scale(1)'; }}
+                                      >
+                                        <span style={{ fontSize: 16 }}>📱</span>
+                                        {attStatus !== 'present' ? 'إرسال إشعار غياب' : 'مراسلة'}
+                                      </a>
+                                    ) : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>لا يوجد رقم</span>}
+                                  </td>
                                 </tr>
-                              ))}
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>
@@ -1318,6 +1478,82 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
       )}
 
       {toast && <div className={`toast toast-${toast.type}`}>{toast.msg}</div>}
+      {showSingleAttModal && (
+        <div className="modal-backdrop" onClick={() => setShowSingleAttModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 400 }}>
+            <div className="modal-header">
+              <h2>تسجيل الحضور اليومي</h2>
+              <button className="btn-close" onClick={() => setShowSingleAttModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div style={{ marginBottom: 20, textAlign: 'center' }}>
+                <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--accent-orange)' }}>
+                  الطالب: {singleAttForm.studentName}
+                </h3>
+              </div>
+              <div className="form-group">
+                <label>التاريخ اليومي</label>
+                <input 
+                  type="date" 
+                  className="input-field" 
+                  value={singleAttForm.date}
+                  onChange={e => setSingleAttForm({ ...singleAttForm, date: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>حالة الحضور</label>
+                <div style={{ display: 'flex', gap: 15, justifyContent: 'center', margin: '15px 0' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 600 }}>
+                    <input 
+                      type="radio" 
+                      name="single-att-status" 
+                      checked={singleAttForm.status === 'present'} 
+                      onChange={() => setSingleAttForm({ ...singleAttForm, status: 'present' })} 
+                    />
+                    حاضر ✅
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 600 }}>
+                    <input 
+                      type="radio" 
+                      name="single-att-status" 
+                      checked={singleAttForm.status === 'absent'} 
+                      onChange={() => setSingleAttForm({ ...singleAttForm, status: 'absent' })} 
+                    />
+                    غائب ❌
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 600 }}>
+                    <input 
+                      type="radio" 
+                      name="single-att-status" 
+                      checked={singleAttForm.status === 'excused'} 
+                      onChange={() => setSingleAttForm({ ...singleAttForm, status: 'excused' })} 
+                    />
+                    مستأذن ⚠️
+                  </label>
+                </div>
+              </div>
+              <div className="form-group">
+                <label>ملاحظات (اختياري)</label>
+                <input 
+                  type="text" 
+                  className="input-field" 
+                  placeholder="سبب الغياب أو التأخير..."
+                  value={singleAttForm.notes}
+                  onChange={e => setSingleAttForm({ ...singleAttForm, notes: e.target.value })}
+                />
+              </div>
+              <button 
+                className="btn btn-primary" 
+                style={{ width: '100%', marginTop: 16 }}
+                onClick={handleSaveSingleAttendance}
+              >
+                حفظ الحضور
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

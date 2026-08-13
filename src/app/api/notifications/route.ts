@@ -3,6 +3,7 @@ import { connectToDatabase } from '@/lib/db';
 import Student from '@/models/Student';
 import Payment from '@/models/Payment';
 import Teacher from '@/models/Teacher';
+import Attendance from '@/models/Attendance';
 import { getCurrentUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -26,13 +27,16 @@ export async function GET(req: NextRequest) {
     await connectToDatabase();
 
     const currentMonth = new Date().toISOString().substring(0, 7);
+    const today = new Date().toISOString().substring(0, 10);
     const notifications: AppNotification[] = [];
     const now = new Date().toISOString();
 
-    // 1. Teachers with Loans (balance < 0)
+    const formatPhone = (p: string) => p && p.startsWith('0') ? `+2${p}` : (p || '');
+
+    // 1. Teachers with Loans (balance < 0) — admin only
     if (currentUser.role === 'admin') {
       const teachersWithLoans = await Teacher.find({ balance: { $lt: 0 } });
-      teachersWithLoans.forEach(teacher => {
+      teachersWithLoans.forEach((teacher: any) => {
         notifications.push({
           id: `loan-${teacher._id}`,
           type: 'warning',
@@ -43,24 +47,47 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // 2. Students who haven't paid or partially paid this month
-    // We only fetch active students
+    // 2. Today's Absent / Excused students — auto attendance notifications
+    const todayAbsentRecords = await Attendance.find({
+      date: today,
+      status: { $in: ['absent', 'excused'] },
+    }).populate('student', 'name phone parentPhone');
+
+    todayAbsentRecords.forEach((record: any) => {
+      const st = record.student;
+      if (!st) return;
+      const waPhone = formatPhone(st.parentPhone || st.phone || '');
+      const statusAr = record.status === 'absent' ? 'غائب' : 'مستأذن';
+      const statusEmoji = record.status === 'absent' ? '❌' : '⚠️';
+      const absMsg = encodeURIComponent(
+        `السلام عليكم، نود إعلامكم بأن ${st.name} كان ${record.status === 'absent' ? 'غائباً' : 'مستأذناً'} اليوم بتاريخ ${today}. نرجو التواصل معنا. شكراً - أكاديمية سكاي`
+      );
+      notifications.push({
+        id: `att-${record._id}`,
+        type: record.status === 'absent' ? 'error' : 'warning',
+        title: `${statusEmoji} ${statusAr} اليوم — ${st.name}`,
+        message: `الطالب ${st.name} ${record.status === 'absent' ? 'غائب' : 'مستأذن'} بتاريخ ${today}${record.notes ? ` — ملاحظة: ${record.notes}` : ''}`,
+        actionLink: waPhone ? `https://wa.me/${waPhone}?text=${absMsg}` : undefined,
+        actionLabel: waPhone ? '📱 إرسال إشعار واتساب' : undefined,
+        timestamp: (record.updatedAt as Date)?.toISOString() || now,
+      });
+    });
+
+    // 3. Students who haven't paid or partially paid this month
     const activeStudents = await Student.find({ isActive: true }).select('name phone parentPhone monthlyFee type');
     
     // Get all payments for current month
     const currentPayments = await Payment.find({ month: currentMonth });
-    const paymentMap = new Map(currentPayments.map(p => [p.student.toString(), p]));
+    const paymentMap = new Map(currentPayments.map((p: any) => [p.student.toString(), p]));
 
     let unpaidCount = 0;
     
-    activeStudents.forEach(st => {
+    activeStudents.forEach((st: any) => {
       const payment = paymentMap.get(st._id.toString());
-      const formatPhone = (p: string) => p.startsWith('0') ? `+2${p}` : p; // Assuming Egypt numbers for wa.me
 
       if (!payment) {
-        // Unpaid
         unpaidCount++;
-        // To avoid overloading the UI, let's only generate detailed notifications for the first 20 unpaid
+        // Only generate detailed notifications for the first 20 unpaid
         if (unpaidCount <= 20) {
           notifications.push({
             id: `unpaid-${st._id}`,
@@ -68,19 +95,18 @@ export async function GET(req: NextRequest) {
             title: 'طالب لم يسدد الشهر',
             message: `${st.name} لم يقم بسداد اشتراك شهر ${currentMonth}`,
             actionLink: `https://wa.me/${formatPhone(st.parentPhone || st.phone)}`,
-            actionLabel: 'مراسلة واتساب',
+            actionLabel: '📱 مراسلة واتساب',
             timestamp: now,
           });
         }
-      } else if (payment.status === 'partial') {
-        // Partial
+      } else if ((payment as any).status === 'partial') {
         notifications.push({
           id: `partial-${st._id}`,
           type: 'warning',
           title: 'دفعة غير مكتملة',
-          message: `${st.name} عليه مبلغ متبقي ${payment.remainingAmount} ج.م (${payment.remainingReason || 'بدون سبب'})`,
+          message: `${st.name} عليه مبلغ متبقي ${(payment as any).remainingAmount} ج.م (${(payment as any).remainingReason || 'بدون سبب'})`,
           actionLink: `https://wa.me/${formatPhone(st.parentPhone || st.phone)}`,
-          actionLabel: 'مراسلة واتساب',
+          actionLabel: '📱 مراسلة واتساب',
           timestamp: now,
         });
       }

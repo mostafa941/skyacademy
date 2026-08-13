@@ -12,6 +12,7 @@ export default function OverviewSection({ userRole, onNavigate }: OverviewProps)
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showPdf, setShowPdf] = useState(false);
+  const [todayAbsent, setTodayAbsent] = useState<any[]>([]);
 
   useEffect(() => {
     async function loadStats() {
@@ -27,7 +28,21 @@ export default function OverviewSection({ userRole, onNavigate }: OverviewProps)
         setLoading(false);
       }
     }
+    async function loadTodayAbsent() {
+      try {
+        const today = new Date().toISOString().substring(0, 10);
+        const res = await fetch(`/api/attendance?date=${today}`);
+        if (res.ok) {
+          const data = await res.json();
+          const absentList = (data.attendance || []).filter((a: any) => a.status === 'absent' || a.status === 'excused');
+          setTodayAbsent(absentList);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
     loadStats();
+    loadTodayAbsent();
   }, []);
 
   if (loading) {
@@ -165,10 +180,10 @@ export default function OverviewSection({ userRole, onNavigate }: OverviewProps)
         </div>
       </div>
 
-      {/* Attendance & Notes Widgets */}
+      {/* Attendance, Notes & Today Absent Widgets */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
         <div className="card">
-          <h3 style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>📅 معدل حضور الطلاب</h3>
+          <h3 style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>📅 معدل حضور الطلاب (إجمالي)</h3>
           <div style={{ display: 'flex', gap: 12 }}>
             <div style={{ flex: 1, background: 'var(--success-muted)', borderRadius: 'var(--radius-md)', padding: 14, textAlign: 'center' }}>
               <div style={{ fontSize: 24, fontWeight: 900, color: 'var(--success)' }}>{stats.attendance?.present || 0}</div>
@@ -194,6 +209,75 @@ export default function OverviewSection({ userRole, onNavigate }: OverviewProps)
             اضغط هنا للانتقال لقائمة المهام والملاحظات الخاصة بالأكاديمية
           </p>
         </div>
+      </div>
+
+      {/* Today's Absent Students Widget */}
+      <div className="card" style={{ border: todayAbsent.length > 0 ? '1px solid rgba(239,68,68,0.3)' : '1px solid var(--border)', background: todayAbsent.length > 0 ? 'linear-gradient(135deg, var(--bg-card) 0%, rgba(239,68,68,0.03) 100%)' : 'var(--bg-card)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+          <h3 style={{ fontWeight: 800, fontSize: 18 }}>
+            📋 غياب اليوم — {new Date().toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          </h3>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {todayAbsent.filter((a: any) => a.status === 'absent').length > 0 && (
+              <span className="badge badge-danger">{todayAbsent.filter((a: any) => a.status === 'absent').length} غائب</span>
+            )}
+            {todayAbsent.filter((a: any) => a.status === 'excused').length > 0 && (
+              <span className="badge badge-orange">{todayAbsent.filter((a: any) => a.status === 'excused').length} مستأذن</span>
+            )}
+          </div>
+        </div>
+        {todayAbsent.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--success)' }}>
+            <div style={{ fontSize: 36, marginBottom: 8 }}>✅</div>
+            <div style={{ fontWeight: 700 }}>لا يوجد غياب مسجّل اليوم</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>جميع الطلاب المسجّل حضورهم اليوم حاضرون</div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 280, overflowY: 'auto' }}>
+            {todayAbsent.map((rec: any) => {
+              const st = rec.student || {};
+              const phone = st.parentPhone || st.phone || '';
+              const waPhone = phone.startsWith('0') ? `+2${phone}` : phone;
+              const statusAr = rec.status === 'absent' ? 'غائب' : 'مستأذن';
+              const statusEmoji = rec.status === 'absent' ? '❌' : '⚠️';
+              const absMsg = encodeURIComponent(`السلام عليكم، نود إعلامكم بأن ${st.name} كان ${rec.status === 'absent' ? 'غائباً' : 'مستأذناً'} اليوم بتاريخ ${new Date().toISOString().substring(0, 10)}. نرجو التواصل معنا. شكراً - أكاديمية سكاي`);
+              return (
+                <div key={rec._id} style={{
+                  display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
+                  borderRadius: 'var(--radius-md)',
+                  background: rec.status === 'absent' ? 'var(--error-muted)' : 'var(--accent-orange-muted)',
+                  border: `1px solid ${rec.status === 'absent' ? 'rgba(239,68,68,0.2)' : 'rgba(255,107,0,0.2)'}`,
+                  flexWrap: 'wrap'
+                }}>
+                  <span style={{ fontSize: 20 }}>{statusEmoji}</span>
+                  <div style={{ flex: 1, minWidth: 100 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>{st.name || 'غير معروف'}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      {statusAr}{rec.notes ? ` — ${rec.notes}` : ''}
+                    </div>
+                  </div>
+                  {waPhone && (
+                    <a
+                      href={`https://wa.me/${waPhone}?text=${absMsg}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 5,
+                        padding: '6px 12px', borderRadius: 20,
+                        background: '#25D366', color: 'white',
+                        fontSize: 12, fontWeight: 700, textDecoration: 'none',
+                        boxShadow: '0 2px 8px rgba(37,211,102,0.35)',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      <span style={{ fontSize: 15 }}>📱</span> إشعار واتساب
+                    </a>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {showPdf && isAdmin && stats && (
