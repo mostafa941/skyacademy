@@ -13,6 +13,7 @@ import StudentsPaymentStatusSection from './sections/StudentsPaymentStatusSectio
 import UsersSection from './sections/UsersSection';
 import SettlementsSection from './sections/SettlementsSection';
 import NotificationsSection from './sections/NotificationsSection';
+import DailyMonitorSection from './sections/DailyMonitorSection';
 
 interface User {
   id: string;
@@ -42,6 +43,7 @@ const navItems: NavItem[] = [
   { id: 'partial_students', label: 'عليهم مبالغ متبقية', icon: '🟡' },
   { id: 'unpaid_students', label: 'غير المسددين', icon: '🔴' },
   { id: 'notifications', label: 'الإشعارات', icon: '🔔' },
+  { id: 'daily_monitor', label: 'متابعة الجلسات', icon: '📋' },
 ];
 
 export default function DashboardLayout({ role }: { children?: React.ReactNode; role: 'admin' | 'secretary' }) {
@@ -202,6 +204,7 @@ export default function DashboardLayout({ role }: { children?: React.ReactNode; 
           {activeSection === 'partial_students' && <StudentsPaymentStatusSection paymentStatus="partial" />}
           {activeSection === 'unpaid_students' && <StudentsPaymentStatusSection paymentStatus="unpaid" />}
           {activeSection === 'notifications' && <NotificationsSection />}
+          {activeSection === 'daily_monitor' && <DailyMonitorSection />}
           {activeSection === 'users' && user.role === 'admin' && <UsersSection userRole={user.role} />}
         </div>
       </main>

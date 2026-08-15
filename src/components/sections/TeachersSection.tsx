@@ -108,6 +108,30 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
   });
   const [addingStudent, setAddingStudent] = useState(false);
 
+  // Student Profile Modal
+  const [showStudentProfileModal, setShowStudentProfileModal] = useState(false);
+  const [selectedStudentForProfile, setSelectedStudentForProfile] = useState<any>(null);
+  const [studentProfileData, setStudentProfileData] = useState<any[]>([]);
+  const [loadingStudentProfile, setLoadingStudentProfile] = useState(false);
+
+  const openStudentProfile = async (student: any) => {
+    setSelectedStudentForProfile(student);
+    setStudentProfileData([]);
+    setShowStudentProfileModal(true);
+    setLoadingStudentProfile(true);
+    try {
+      const res = await fetch(`/api/attendance?studentId=${student.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setStudentProfileData(data.attendance || []);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingStudentProfile(false);
+    }
+  };
+
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
   // Forms
@@ -188,7 +212,11 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
       const res = await fetch(`/api/teachers/${teacherId}/students`);
       if (res.ok) {
         const data = await res.json();
-        setTeacherStudents(data.students || []);
+        const students = data.students || [];
+        setTeacherStudents(students);
+        if (staffType === 'trainer') {
+          initializeBulkAttendance(null, students);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -452,16 +480,17 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
     }
   };
 
-  const initializeBulkAttendance = (grade: string, students: any[]) => {
+  const initializeBulkAttendance = (grade: string | null, students: any[]) => {
     const initialMap: Record<string, 'present' | 'absent' | 'excused'> = {};
-    students.filter(st => st.grade === grade).forEach(st => {
+    const filtered = grade ? students.filter(st => st.grade === grade) : students;
+    filtered.forEach(st => {
       initialMap[st.id] = 'present';
     });
     setBulkAttendance(initialMap);
   };
 
   const handleSaveBulkAttendance = async () => {
-    const studentsInGrade = teacherStudents.filter(ts => ts.grade === selectedProfileGrade);
+    const studentsInGrade = staffType === 'trainer' ? teacherStudents : teacherStudents.filter(ts => ts.grade === selectedProfileGrade);
     if (studentsInGrade.length === 0) return;
     
     setSavingAttendance(true);
@@ -475,7 +504,7 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
             studentId: st.id,
             date: attendanceDate,
             status,
-            notes: 'تسجيل جماعي من صفحة المدرس',
+            notes: staffType === 'trainer' ? 'تسجيل جماعي من صفحة المدرب' : 'تسجيل جماعي من صفحة المدرس',
           }),
         });
       });
@@ -687,6 +716,7 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
                 ) : teacherStudents.length === 0 ? (
                   <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>لا يوجد متدربين مسجلين مع هذا الـ {labelSingle}</div>
                 ) : (
+                  <>
                   <div className="table-wrapper" style={{ border: 'none', borderRadius: 0 }}>
                     <table>
                       <thead>
@@ -787,10 +817,18 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
                                 <button
                                   className="btn btn-ghost btn-sm"
                                   style={{ color: 'var(--error)', padding: '4px 8px', fontSize: 16 }}
-                                  title="حذف المتدرب"
+                                  title={staffType === 'trainer' ? 'حذف المتدرب' : 'حذف الطالب'}
                                   onClick={() => handleDeleteStudent(ts.id, ts.name)}
                                 >
                                   🗑️
+                                </button>
+                                <button
+                                  className="btn btn-secondary btn-sm"
+                                  title="ملف الطالب"
+                                  onClick={() => openStudentProfile(ts)}
+                                  style={{ padding: '4px 8px', fontSize: 14 }}
+                                >
+                                  📄 ملف
                                 </button>
                               </div>
                             </td>
@@ -800,6 +838,89 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
                       </tbody>
                     </table>
                   </div>
+                  
+                  {/* Bulk Attendance Section for Trainer */}
+                  <div style={{ padding: 20, background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)' }}>
+                    <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      📅 تسجيل حضور وغياب المتدربين دفعة واحدة
+                    </h3>
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
+                      <div className="input-group" style={{ marginBottom: 0 }}>
+                        <label className="input-label" style={{ fontSize: 13 }}>تاريخ الحصة *</label>
+                        <input className="input" type="date" value={attendanceDate} onChange={(e) => setAttendanceDate(e.target.value)} style={{ padding: '8px 12px', fontSize: 14 }} />
+                      </div>
+                    </div>
+                    
+                    <div className="table-wrapper" style={{ maxHeight: 250, overflowY: 'auto', marginBottom: 16 }}>
+                      <table style={{ background: 'var(--bg-card)' }}>
+                        <thead>
+                          <tr>
+                            <th>اسم المتدرب</th>
+                            <th>تحديد الحالة اليومية</th>
+                            <th>واتساب ولي الأمر</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {teacherStudents.map(st => {
+                            const waPhone = (st.parentPhone || st.phone || '').startsWith('0') ? `+2${st.parentPhone || st.phone}` : (st.parentPhone || st.phone || '');
+                            const attStatus = bulkAttendance[st.id] || 'present';
+                            const absMsg = encodeURIComponent(`السلام عليكم، نود إعلامكم بأن ${st.name} كان${attStatus === 'absent' ? ' غائباً' : ' مستأذناً'} اليوم بتاريخ ${attendanceDate} في حصة التدريب. نرجو التواصل معنا. شكراً - أكاديمية سكاي`);
+                            return (
+                            <tr key={st.id} style={{ background: attStatus === 'absent' ? 'rgba(239,68,68,0.05)' : attStatus === 'excused' ? 'rgba(255,107,0,0.05)' : 'transparent', transition: 'background 0.2s' }}>
+                              <td style={{ fontWeight: 700 }}>{st.name}</td>
+                              <td>
+                                <div style={{ display: 'flex', gap: 14 }}>
+                                  <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 13 }}>
+                                    <input type="radio" name={`bulk-att-${st.id}`} checked={bulkAttendance[st.id] === 'present'} onChange={() => setBulkAttendance({ ...bulkAttendance, [st.id]: 'present' })} />
+                                    حاضر ✅
+                                  </label>
+                                  <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 13 }}>
+                                    <input type="radio" name={`bulk-att-${st.id}`} checked={bulkAttendance[st.id] === 'absent'} onChange={() => setBulkAttendance({ ...bulkAttendance, [st.id]: 'absent' })} />
+                                    غائب ❌
+                                  </label>
+                                  <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 13 }}>
+                                    <input type="radio" name={`bulk-att-${st.id}`} checked={bulkAttendance[st.id] === 'excused'} onChange={() => setBulkAttendance({ ...bulkAttendance, [st.id]: 'excused' })} />
+                                    مستأذن ⚠️
+                                  </label>
+                                </div>
+                              </td>
+                              <td>
+                                {waPhone ? (
+                                  <a
+                                    href={attStatus !== 'present' ? `https://wa.me/${waPhone}?text=${absMsg}` : `https://wa.me/${waPhone}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title={attStatus !== 'present' ? `إرسال إشعار غياب لولي أمر ${st.name}` : `مراسلة ولي أمر ${st.name}`}
+                                    style={{
+                                      display: 'inline-flex', alignItems: 'center', gap: 5,
+                                      padding: '5px 10px', borderRadius: 20,
+                                      background: attStatus !== 'present' ? '#25D366' : '#e8f5e9',
+                                      color: attStatus !== 'present' ? 'white' : '#25D366',
+                                      fontSize: 13, fontWeight: 700, textDecoration: 'none',
+                                      border: '1px solid #25D366',
+                                      boxShadow: attStatus !== 'present' ? '0 2px 8px rgba(37,211,102,0.4)' : 'none',
+                                      transition: 'all 0.2s'
+                                    }}
+                                    onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.transform = 'scale(1.05)'; }}
+                                    onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.transform = 'scale(1)'; }}
+                                  >
+                                    <span style={{ fontSize: 16 }}>📱</span>
+                                    {attStatus !== 'present' ? 'إرسال إشعار غياب' : 'مراسلة'}
+                                  </a>
+                                ) : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>لا يوجد رقم</span>}
+                              </td>
+                            </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    
+                    <button className="btn btn-primary" onClick={handleSaveBulkAttendance} disabled={savingAttendance || teacherStudents.length === 0}>
+                      {savingAttendance ? 'جاري حفظ سجلات الحضور...' : 'حفظ سجل حضور وغياب المتدربين'}
+                    </button>
+                  </div>
+                  </>
                 )}
               </div>
             ) : (
@@ -1013,6 +1134,14 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
                                       onClick={() => handleDeleteStudent(ts.id, ts.name)}
                                     >
                                       🗑️
+                                    </button>
+                                    <button
+                                      className="btn btn-secondary btn-sm"
+                                      title="ملف الطالب"
+                                      onClick={() => openStudentProfile(ts)}
+                                      style={{ padding: '4px 8px', fontSize: 14 }}
+                                    >
+                                      📄 ملف
                                     </button>
                                   </div>
                                 </td>
@@ -1346,6 +1475,129 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
                 <button className="btn btn-primary" onClick={handleSaveStudentPayment} style={{ flex: 1 }}>حفظ الدفع</button>
                 <button className="btn btn-ghost" onClick={() => setShowPayModal(false)}>إلغاء</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Student Profile Modal */}
+      {showStudentProfileModal && selectedStudentForProfile && (
+        <div className="modal-backdrop" onClick={() => setShowStudentProfileModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 650, width: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 16 }}>
+              <div>
+                <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)' }}>📄 ملف {staffType === 'trainer' ? 'المتدرب' : 'الطالب'}: {selectedStudentForProfile.name}</h2>
+                <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4 }}>
+                  {selectedStudentForProfile.grade} — المادة: {selectedStudentForProfile.subjectName}
+                </div>
+              </div>
+              <button className="btn btn-ghost" onClick={() => setShowStudentProfileModal(false)}>✕</button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {/* Payment Summary */}
+              <div style={{ background: 'var(--bg-elevated)', padding: 16, borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>💰 الحالة المالية ({selectedStudentForProfile.paymentType === 'session' ? 'بالحصة' : 'بالشهر'})</h3>
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: 120 }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>المطلوب</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)' }}>{selectedStudentForProfile.monthlyFee} ج.م</div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 120 }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>المدفوع (الفعلي)</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--success)' }}>{selectedStudentForProfile.paymentAmount} ج.م</div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 120 }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>حالة الدفع</div>
+                    <div style={{ marginTop: 4 }}>
+                      {selectedStudentForProfile.paymentStatus === 'paid' ? (
+                        <span className="badge badge-success">تم الدفع ✅</span>
+                      ) : selectedStudentForProfile.paymentStatus === 'partial' ? (
+                        <span className="badge badge-orange">دفع جزئي (متبقي {selectedStudentForProfile.remainingAmount}) ⚠️</span>
+                      ) : (
+                        <span className="badge badge-danger">لم يدفع ❌</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Attendance Summary & List */}
+              <div>
+                <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>📅 سجل الحضور والغياب</h3>
+                
+                {loadingStudentProfile ? (
+                  <div style={{ textAlign: 'center', padding: 20 }}>
+                    <div className="spinner" style={{ margin: '0 auto' }}></div>
+                  </div>
+                ) : studentProfileData.length === 0 ? (
+                  <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', background: 'var(--bg-elevated)', borderRadius: 8 }}>
+                    لا يوجد سجل حضور لهذا الطالب حتى الآن.
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+                      <div className="badge badge-success" style={{ fontSize: 14, padding: '6px 12px' }}>
+                        ✅ حاضر: {studentProfileData.filter(a => a.status === 'present').length} أيام
+                      </div>
+                      <div className="badge badge-danger" style={{ fontSize: 14, padding: '6px 12px' }}>
+                        ❌ غائب: {studentProfileData.filter(a => a.status === 'absent').length} أيام
+                      </div>
+                      <div className="badge badge-orange" style={{ fontSize: 14, padding: '6px 12px' }}>
+                        ⚠️ مستأذن: {studentProfileData.filter(a => a.status === 'excused').length} أيام
+                      </div>
+                    </div>
+
+                    <div className="table-wrapper" style={{ maxHeight: 300, overflowY: 'auto' }}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>التاريخ</th>
+                            <th>الحالة</th>
+                            <th>ملاحظات</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {studentProfileData.map((record: any) => (
+                            <tr key={record._id}>
+                              <td style={{ fontWeight: 600 }}>{record.date}</td>
+                              <td>
+                                {record.status === 'present' ? <span className="badge badge-success">حاضر ✅</span> :
+                                 record.status === 'absent' ? <span className="badge badge-danger">غائب ❌</span> :
+                                 <span className="badge badge-orange">مستأذن ⚠️</span>}
+                              </td>
+                              <td style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+                                {record.notes || '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, display: 'flex', gap: 12 }}>
+                {(() => {
+                  const pPhone = selectedStudentForProfile.parentPhone || selectedStudentForProfile.phone || '';
+                  const waPhone = pPhone.startsWith('0') ? `+2${pPhone}` : pPhone;
+                  if (!waPhone) return null;
+                  return (
+                    <a
+                      href={`https://wa.me/${waPhone}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn btn-primary"
+                      style={{ background: '#25D366', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: 8, flex: 1, justifyContent: 'center' }}
+                    >
+                      <span>📱</span> مراسلة ولي الأمر عبر واتساب
+                    </a>
+                  );
+                })()}
+              </div>
+
             </div>
           </div>
         </div>

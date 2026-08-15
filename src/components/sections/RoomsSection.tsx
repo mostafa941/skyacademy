@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 
 interface RoomSchedule {
+  teacher?: string;
   teacherName?: string;
   subjectName?: string;
   dayOfWeek: string;
@@ -46,6 +47,7 @@ export default function RoomsSection() {
 
   // Schedule slot form
   const [slotForm, setSlotForm] = useState({
+    teacherId: '',
     teacherName: '',
     subjectName: '',
     dayOfWeek: 'السبت',
@@ -126,7 +128,15 @@ export default function RoomsSection() {
   // Add Schedule Slot to selected Room
   const handleAddSlot = async () => {
     if (!selectedRoom || !slotForm.teacherName) return;
-    const newSchedule = [...(selectedRoom.schedule || []), slotForm];
+    const slotToSave = {
+      teacher: slotForm.teacherId || undefined,
+      teacherName: slotForm.teacherName,
+      subjectName: slotForm.subjectName,
+      dayOfWeek: slotForm.dayOfWeek,
+      startTime: slotForm.startTime,
+      endTime: slotForm.endTime,
+    };
+    const newSchedule = [...(selectedRoom.schedule || []), slotToSave];
     try {
       const res = await fetch('/api/rooms', {
         method: 'PUT',
@@ -136,7 +146,7 @@ export default function RoomsSection() {
       if (res.ok) {
         showToast('تم إضافة الموعد للجدول');
         setSelectedRoom({ ...selectedRoom, schedule: newSchedule });
-        setSlotForm({ teacherName: '', subjectName: '', dayOfWeek: 'السبت', startTime: '14:00', endTime: '16:00' });
+        setSlotForm({ teacherId: '', teacherName: '', subjectName: '', dayOfWeek: 'السبت', startTime: '14:00', endTime: '16:00' });
         loadData();
       }
     } catch {
@@ -288,13 +298,13 @@ export default function RoomsSection() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                   <div className="input-group">
                     <label className="input-label">المدرس *</label>
-                    <select className="input" value={slotForm.teacherName} onChange={(e) => {
-                      const t = teachers.find(x => x.name === e.target.value);
-                      setSlotForm({ ...slotForm, teacherName: e.target.value, subjectName: t?.subjectName || '' });
+                    <select className="input" value={slotForm.teacherId} onChange={(e) => {
+                      const t = teachers.find(x => x.id === e.target.value);
+                      setSlotForm({ ...slotForm, teacherId: e.target.value, teacherName: t?.name || '', subjectName: t?.subjectName || '' });
                     }}>
                       <option value="">اختر المدرس...</option>
                       {teachers.map(t => (
-                        <option key={t.id} value={t.name}>{t.name} ({t.subjectName})</option>
+                        <option key={t.id} value={t.id}>{t.name} ({t.subjectName})</option>
                       ))}
                     </select>
                   </div>
