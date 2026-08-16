@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { Eye, EyeOff } from 'lucide-react';
 
 export default function LandingPage() {
   const router = useRouter();
@@ -12,6 +13,7 @@ export default function LandingPage() {
   const [selectedRole, setSelectedRole] = useState<'admin' | 'secretary'>('admin');
   const [identifier, setIdentifier] = useState('admin@sky.com');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   // Modals
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -240,14 +242,37 @@ export default function LandingPage() {
 
           <div className="input-group">
             <label className="input-label">كلمة المرور</label>
-            <input
-              className="input"
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              required
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                className="input"
+                type={showPassword ? "text" : "password"}
+                placeholder="••••••••"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                required
+                style={{ width: '100%', paddingRight: '40px' }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '10px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#6b7280',
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </div>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -284,7 +309,9 @@ export default function LandingPage() {
                   <div className="input-group">
                     <label className="input-label">{forgotForm.role === 'admin' ? 'أدخل إيميل لإرسال رمز التحقق إليه' : 'أدخل الإيميل المسجل مسبقاً'}</label>
                     <input className="input" type="email" required placeholder="example@email.com" value={forgotForm.email} onChange={e => setForgotForm({ ...forgotForm, email: e.target.value })} />
-
+                    <p style={{ fontSize: 11, color: 'var(--accent-orange)', marginTop: 4 }}>
+                      سيتم إرسال رمز التحقق (OTP) إلى حساب الجيميل
+                    </p>
                   </div>
                 </>
               )}
