@@ -284,9 +284,7 @@ export default function LandingPage() {
                   <div className="input-group">
                     <label className="input-label">{forgotForm.role === 'admin' ? 'أدخل إيميل لإرسال رمز التحقق إليه' : 'أدخل الإيميل المسجل مسبقاً'}</label>
                     <input className="input" type="email" required placeholder="example@email.com" value={forgotForm.email} onChange={e => setForgotForm({ ...forgotForm, email: e.target.value })} />
-                    <p style={{ fontSize: 11, color: 'var(--accent-orange)', marginTop: 4 }}>
-                      سيتم إرسال رمز التحقق (OTP) إلى loul17111999@gmail.com
-                    </p>
+
                   </div>
                 </>
               )}
