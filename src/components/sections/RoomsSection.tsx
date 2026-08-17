@@ -581,37 +581,51 @@ export default function RoomsSection() {
 
                 {/* Stage and Grade selection for Teacher */}
                 {staffTypeFilter === 'teacher' && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                    <div className="input-group">
-                      <label className="input-label">المرحلة الدراسية *</label>
-                      <select
-                        className="input"
-                        value={selectedStage}
-                        onChange={(e) => handleStageChange(e.target.value as 'primary' | 'prep' | 'secondary')}
-                      >
-                        <option value="primary">🎒 ابتدائي</option>
-                        <option value="prep">🏫 إعدادي</option>
-                        <option value="secondary">🎓 ثانوي</option>
-                      </select>
-                    </div>
-
-                    <div className="input-group">
-                      <label className="input-label">الصف الدراسي (السنة) *</label>
-                      <select
-                        className="input"
-                        value={slotForm.grade}
-                        onChange={(e) => setSlotForm(f => ({ ...f, grade: e.target.value }))}
-                      >
-                        {STAGE_GRADES[selectedStage].map((gr) => {
-                          const isTeacherGrade = selectedStaffMember?.grades?.includes(gr);
-                          return (
-                            <option key={gr} value={gr}>
-                              {gr} {isTeacherGrade ? '⭐' : ''}
-                            </option>
-                          );
-                        })}
-                      </select>
-                    </div>
+                  <div className="input-group">
+                    <label className="input-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>🎓 الفئة العمرية والمرحلة الدراسية (بيدرس لمين) *</span>
+                      {slotForm.grade && (
+                        <span style={{ fontSize: 11, color: 'var(--accent-orange)', fontWeight: 600 }}>
+                          ✔ {slotForm.grade}
+                        </span>
+                      )}
+                    </label>
+                    <select
+                      className="input"
+                      value={slotForm.grade}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        let st: 'primary' | 'prep' | 'secondary' = 'secondary';
+                        if (val.includes('الابتدائي')) st = 'primary';
+                        else if (val.includes('الإعدادي')) st = 'prep';
+                        else if (val.includes('الثانوي')) st = 'secondary';
+                        setSelectedStage(st);
+                        setSlotForm(f => ({ ...f, grade: val }));
+                      }}
+                      style={{ fontSize: 14 }}
+                    >
+                      <optgroup label="🎒 المرحلة الابتدائية (الصفوف الابتدائية)">
+                        {STAGE_GRADES.primary.map(gr => (
+                          <option key={gr} value={gr}>
+                            🎒 {gr} {selectedStaffMember?.grades?.includes(gr) ? '⭐ (مسجل للمدرس)' : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="🏫 المرحلة الإعدادية (الصفوف الإعدادية)">
+                        {STAGE_GRADES.prep.map(gr => (
+                          <option key={gr} value={gr}>
+                            🏫 {gr} {selectedStaffMember?.grades?.includes(gr) ? '⭐ (مسجل للمدرس)' : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="🎓 المرحلة الثانوية (الصفوف الثانوية)">
+                        {STAGE_GRADES.secondary.map(gr => (
+                          <option key={gr} value={gr}>
+                            🎓 {gr} {selectedStaffMember?.grades?.includes(gr) ? '⭐ (مسجل للمدرس)' : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                    </select>
                   </div>
                 )}
 
