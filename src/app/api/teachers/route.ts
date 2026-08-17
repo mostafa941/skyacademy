@@ -4,6 +4,8 @@ import Teacher from '@/models/Teacher';
 import Student from '@/models/Student';
 import Room from '@/models/Room';
 import TeacherAttendance from '@/models/TeacherAttendance';
+import Payment from '@/models/Payment';
+import Expense from '@/models/Expense';
 import { getCurrentUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -28,14 +30,21 @@ export async function GET(req: NextRequest) {
 
     const teacherList = await Promise.all(
       teachers.map(async (t) => {
-        const [studentCount, attendanceRecords] = await Promise.all([
+        const [studentCount, attendanceRecords, payments, loans] = await Promise.all([
           Student.countDocuments({ teacher: t._id }),
           TeacherAttendance.find({ teacher: t._id }),
+          Payment.find({ teacher: t._id, status: { $in: ['paid', 'partial'] } }),
+          Expense.find({ teacher: t._id, type: 'teacher_loan' }),
         ]);
 
         const totalAtt = attendanceRecords.length;
-        const presentCount = attendanceRecords.filter((a) => a.status === 'present').length;
-        const absentCount = attendanceRecords.filter((a) => a.status === 'absent').length;
+        const presentCount = attendanceRecords.filter((a: any) => a.status === 'present').length;
+        const absentCount = attendanceRecords.filter((a: any) => a.status === 'absent').length;
+        
+        const totalCollected = payments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
+        const totalLoans = loans.reduce((sum: number, e: any) => sum + (e.amount || 0), 0);
+        const rawTeacherShare = payments.reduce((sum: number, p: any) => sum + ((p.amount || 0) * (t.teacherPercentage / 100)), 0);
+        const calculatedBalance = rawTeacherShare - totalLoans;
 
         return {
           id: t._id.toString(),
@@ -48,7 +57,8 @@ export async function GET(req: NextRequest) {
           roomName: (t.room as any)?.name || 'غير محددة',
           teacherPercentage: t.teacherPercentage,
           academyPercentage: t.academyPercentage,
-          balance: t.balance,
+          balance: calculatedBalance, // dynamically calculated, fixes sync issues
+          totalCollected,
           studentCount,
           totalAttendance: totalAtt,
           presentCount,

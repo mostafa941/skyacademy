@@ -22,7 +22,14 @@ export async function GET(req: NextRequest) {
     if (date) query.date = date;
 
     const attendance = await Attendance.find(query)
-      .populate('student', 'name phone parentPhone grade subjectName')
+      .populate({
+        path: 'student',
+        select: 'name phone parentPhone grade subjectName teacher type',
+        populate: {
+          path: 'teacher',
+          select: 'name'
+        }
+      })
       .sort({ date: -1 });
 
     return NextResponse.json({ attendance });

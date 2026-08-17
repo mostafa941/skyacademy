@@ -12,7 +12,9 @@ export default function OverviewSection({ userRole, onNavigate }: OverviewProps)
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showPdf, setShowPdf] = useState(false);
-  const [todayAbsent, setTodayAbsent] = useState<any[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().substring(0, 10));
+  const [todayAttendance, setTodayAttendance] = useState<any[]>([]);
+  const [activeAttendanceTab, setActiveAttendanceTab] = useState<'present' | 'absent'>('absent');
 
   useEffect(() => {
     async function loadStats() {
@@ -28,22 +30,25 @@ export default function OverviewSection({ userRole, onNavigate }: OverviewProps)
         setLoading(false);
       }
     }
-    async function loadTodayAbsent() {
+    async function loadTodayAttendance() {
       try {
-        const today = new Date().toISOString().substring(0, 10);
-        const res = await fetch(`/api/attendance?date=${today}`);
+        const res = await fetch(`/api/attendance?date=${selectedDate}`);
         if (res.ok) {
           const data = await res.json();
-          const absentList = (data.attendance || []).filter((a: any) => a.status === 'absent' || a.status === 'excused');
-          setTodayAbsent(absentList);
+          setTodayAttendance(data.attendance || []);
         }
       } catch (err) {
         console.error(err);
       }
     }
     loadStats();
-    loadTodayAbsent();
-  }, []);
+    loadTodayAttendance();
+  }, [selectedDate]);
+
+  const presentCount = todayAttendance.filter(a => a.status === 'present').length;
+  const absentCount = todayAttendance.filter(a => a.status === 'absent' || a.status === 'excused').length;
+  const totalAttendance = presentCount + absentCount;
+  const attendanceRate = totalAttendance > 0 ? Math.round((presentCount / totalAttendance) * 100) : 100;
 
   if (loading) {
     return (
@@ -94,6 +99,13 @@ export default function OverviewSection({ userRole, onNavigate }: OverviewProps)
               </div>
             </div>
 
+            <div onClick={() => onNavigate('income')} style={{ cursor: 'pointer', background: 'var(--accent-orange-muted)', borderRadius: 'var(--radius-md)', padding: 18, border: '1px solid var(--accent-orange-border)' }}>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4, fontWeight: 600 }}>✨ مكسب اليوم</div>
+              <div style={{ fontSize: 26, fontWeight: 900, color: 'var(--accent-orange)' }}>
+                {f.todayAcademyShare?.toLocaleString('ar-EG') || 0} ج.م
+              </div>
+            </div>
+
             <div onClick={() => onNavigate('expenses')} style={{ cursor: 'pointer', background: 'var(--error-muted)', borderRadius: 'var(--radius-md)', padding: 18, border: '1px solid rgba(239, 68, 68, 0.2)' }}>
               <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4, fontWeight: 600 }}>☀️ خرج اليوم</div>
               <div style={{ fontSize: 26, fontWeight: 900, color: 'var(--error)' }}>
@@ -101,9 +113,9 @@ export default function OverviewSection({ userRole, onNavigate }: OverviewProps)
               </div>
             </div>
 
-            <div onClick={() => onNavigate('income')} style={{ cursor: 'pointer', background: 'var(--accent-orange-muted)', borderRadius: 'var(--radius-md)', padding: 18, border: '1px solid var(--accent-orange-border)' }}>
-              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4, fontWeight: 600 }}>✨ مكسب اليوم</div>
-              <div style={{ fontSize: 26, fontWeight: 900, color: 'var(--accent-orange)' }}>
+            <div onClick={() => onNavigate('income')} style={{ cursor: 'pointer', background: 'rgba(59, 130, 246, 0.1)', borderRadius: 'var(--radius-md)', padding: 18, border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4, fontWeight: 600 }}>💰 المتبقي بعد الخرج</div>
+              <div style={{ fontSize: 26, fontWeight: 900, color: '#3b82f6' }}>
                 {f.netToday?.toLocaleString('ar-EG') || 0} ج.م
               </div>
             </div>
@@ -183,18 +195,27 @@ export default function OverviewSection({ userRole, onNavigate }: OverviewProps)
       {/* Attendance, Notes & Today Absent Widgets */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
         <div className="card">
-          <h3 style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>📅 معدل حضور الطلاب (إجمالي)</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+            <h3 style={{ fontWeight: 700, fontSize: 16 }}>📅 معدل حضور الطلاب</h3>
+            <input 
+              type="date" 
+              value={selectedDate} 
+              onChange={(e) => setSelectedDate(e.target.value)} 
+              className="input" 
+              style={{ padding: '6px 12px', width: 'auto', background: 'var(--bg-elevated)', border: '1px solid var(--border)' }} 
+            />
+          </div>
           <div style={{ display: 'flex', gap: 12 }}>
-            <div style={{ flex: 1, background: 'var(--success-muted)', borderRadius: 'var(--radius-md)', padding: 14, textAlign: 'center' }}>
-              <div style={{ fontSize: 24, fontWeight: 900, color: 'var(--success)' }}>{stats.attendance?.present || 0}</div>
+            <div style={{ flex: 1, cursor: 'pointer', background: 'var(--success-muted)', borderRadius: 'var(--radius-md)', padding: 14, textAlign: 'center' }} onClick={() => setActiveAttendanceTab('present')}>
+              <div style={{ fontSize: 24, fontWeight: 900, color: 'var(--success)' }}>{presentCount}</div>
               <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>حاضر</div>
             </div>
-            <div style={{ flex: 1, background: 'var(--error-muted)', borderRadius: 'var(--radius-md)', padding: 14, textAlign: 'center' }}>
-              <div style={{ fontSize: 24, fontWeight: 900, color: 'var(--error)' }}>{stats.attendance?.absent || 0}</div>
+            <div style={{ flex: 1, cursor: 'pointer', background: 'var(--error-muted)', borderRadius: 'var(--radius-md)', padding: 14, textAlign: 'center' }} onClick={() => setActiveAttendanceTab('absent')}>
+              <div style={{ fontSize: 24, fontWeight: 900, color: 'var(--error)' }}>{absentCount}</div>
               <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>غائب</div>
             </div>
             <div style={{ flex: 1, background: 'var(--accent-orange-muted)', borderRadius: 'var(--radius-md)', padding: 14, textAlign: 'center' }}>
-              <div style={{ fontSize: 24, fontWeight: 900, color: 'var(--accent-orange)' }}>{stats.attendance?.rate || 100}%</div>
+              <div style={{ fontSize: 24, fontWeight: 900, color: 'var(--accent-orange)' }}>{attendanceRate}%</div>
               <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>نسبة الحضور</div>
             </div>
           </div>
@@ -211,73 +232,96 @@ export default function OverviewSection({ userRole, onNavigate }: OverviewProps)
         </div>
       </div>
 
-      {/* Today's Absent Students Widget */}
-      <div className="card" style={{ border: todayAbsent.length > 0 ? '1px solid rgba(239,68,68,0.3)' : '1px solid var(--border)', background: todayAbsent.length > 0 ? 'linear-gradient(135deg, var(--bg-card) 0%, rgba(239,68,68,0.03) 100%)' : 'var(--bg-card)' }}>
+      {/* Attendance Widget */}
+      <div className="card" style={{ border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
           <h3 style={{ fontWeight: 800, fontSize: 18 }}>
-            📋 غياب اليوم — {new Date().toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            📋 تقرير الحضور — {new Date(selectedDate).toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </h3>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {todayAbsent.filter((a: any) => a.status === 'absent').length > 0 && (
-              <span className="badge badge-danger">{todayAbsent.filter((a: any) => a.status === 'absent').length} غائب</span>
-            )}
-            {todayAbsent.filter((a: any) => a.status === 'excused').length > 0 && (
-              <span className="badge badge-orange">{todayAbsent.filter((a: any) => a.status === 'excused').length} مستأذن</span>
-            )}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'var(--bg-elevated)', padding: 4, borderRadius: 8 }}>
+             <button
+                className={`btn btn-sm ${activeAttendanceTab === 'present' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setActiveAttendanceTab('present')}
+             >
+                حاضر ({presentCount})
+             </button>
+             <button
+                className={`btn btn-sm ${activeAttendanceTab === 'absent' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setActiveAttendanceTab('absent')}
+             >
+                غائب ومستأذن ({absentCount})
+             </button>
           </div>
         </div>
-        {todayAbsent.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--success)' }}>
-            <div style={{ fontSize: 36, marginBottom: 8 }}>✅</div>
-            <div style={{ fontWeight: 700 }}>لا يوجد غياب مسجّل اليوم</div>
-            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>جميع الطلاب المسجّل حضورهم اليوم حاضرون</div>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 280, overflowY: 'auto' }}>
-            {todayAbsent.map((rec: any) => {
-              const st = rec.student || {};
-              const phone = st.parentPhone || st.phone || '';
-              const waPhone = phone.startsWith('0') ? `+2${phone}` : phone;
-              const statusAr = rec.status === 'absent' ? 'غائب' : 'مستأذن';
-              const statusEmoji = rec.status === 'absent' ? '❌' : '⚠️';
-              const absMsg = encodeURIComponent(`السلام عليكم، نود إعلامكم بأن ${st.name} كان ${rec.status === 'absent' ? 'غائباً' : 'مستأذناً'} اليوم بتاريخ ${new Date().toISOString().substring(0, 10)}. نرجو التواصل معنا. شكراً - أكاديمية سكاي`);
-              return (
-                <div key={rec._id} style={{
-                  display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
-                  borderRadius: 'var(--radius-md)',
-                  background: rec.status === 'absent' ? 'var(--error-muted)' : 'var(--accent-orange-muted)',
-                  border: `1px solid ${rec.status === 'absent' ? 'rgba(239,68,68,0.2)' : 'rgba(255,107,0,0.2)'}`,
-                  flexWrap: 'wrap'
-                }}>
-                  <span style={{ fontSize: 20 }}>{statusEmoji}</span>
-                  <div style={{ flex: 1, minWidth: 100 }}>
-                    <div style={{ fontWeight: 700, fontSize: 14 }}>{st.name || 'غير معروف'}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                      {statusAr}{rec.notes ? ` — ${rec.notes}` : ''}
+        
+        {(() => {
+          const displayedList = todayAttendance.filter(a => activeAttendanceTab === 'present' ? a.status === 'present' : a.status === 'absent' || a.status === 'excused');
+          
+          if (displayedList.length === 0) {
+            return (
+              <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--text-secondary)' }}>
+                <div style={{ fontSize: 36, marginBottom: 8 }}>{activeAttendanceTab === 'present' ? '🤔' : '✅'}</div>
+                <div style={{ fontWeight: 700 }}>{activeAttendanceTab === 'present' ? 'لا يوجد طلاب حاضرون في هذا اليوم' : 'لا يوجد غياب مسجّل في هذا اليوم'}</div>
+              </div>
+            );
+          }
+          
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 280, overflowY: 'auto' }}>
+              {displayedList.map((rec: any) => {
+                const st = rec.student || {};
+                const teacherName = st.teacher?.name || 'غير محدد';
+                const staffLabel = st.type === 'trainee' ? 'المدرب' : 'المدرس';
+                const studentLabel = st.type === 'trainee' ? 'متدرب' : 'طالب';
+                
+                const phone = st.parentPhone || st.phone || '';
+                const waPhone = phone.startsWith('0') ? `+2${phone}` : phone;
+                const statusAr = rec.status === 'present' ? 'حاضر' : rec.status === 'absent' ? 'غائب' : 'مستأذن';
+                const statusEmoji = rec.status === 'present' ? '✅' : rec.status === 'absent' ? '❌' : '⚠️';
+                const msgText = rec.status === 'present' 
+                   ? `السلام عليكم، نود إعلامكم بأن ${st.name} قد حضر حصة ${st.subjectName || ''} مع ${teacherName} يوم ${selectedDate}.`
+                   : `السلام عليكم، نود إعلامكم بأن ${st.name} كان ${rec.status === 'absent' ? 'غائباً' : 'مستأذناً'} يوم ${selectedDate} في حصة ${st.subjectName || ''} مع ${teacherName}. نرجو التواصل معنا. شكراً - أكاديمية سكاي`;
+                const waMsg = encodeURIComponent(msgText);
+                
+                return (
+                  <div key={rec._id} style={{
+                    display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
+                    borderRadius: 'var(--radius-md)',
+                    background: rec.status === 'present' ? 'var(--success-muted)' : rec.status === 'absent' ? 'var(--error-muted)' : 'var(--accent-orange-muted)',
+                    border: `1px solid ${rec.status === 'present' ? 'rgba(34,197,94,0.2)' : rec.status === 'absent' ? 'rgba(239,68,68,0.2)' : 'rgba(255,107,0,0.2)'}`,
+                    flexWrap: 'wrap'
+                  }}>
+                    <span style={{ fontSize: 20 }}>{statusEmoji}</span>
+                    <div style={{ flex: 1, minWidth: 100 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>{st.name || 'غير معروف'} <span style={{fontSize: 11, background: 'var(--bg-elevated)', padding: '2px 6px', borderRadius: 10, color: 'var(--text-secondary)'}}>{studentLabel}</span> - <span style={{fontSize: 12, fontWeight: 'normal', color: 'var(--text-muted)'}}>{st.grade || ''}</span></div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                        المادة/اللعبة: <strong>{st.subjectName || ''}</strong> | {staffLabel}: <strong>{teacherName}</strong>
+                        {rec.notes ? ` — ${rec.notes}` : ''}
+                      </div>
                     </div>
+                    {waPhone && (
+                      <a
+                        href={`https://wa.me/${waPhone}?text=${waMsg}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          padding: '6px 12px', borderRadius: 20,
+                          background: '#25D366', color: 'white',
+                          fontSize: 12, fontWeight: 700, textDecoration: 'none',
+                          boxShadow: '0 2px 8px rgba(37,211,102,0.35)',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        <span style={{ fontSize: 15 }}>📱</span> إشعار واتساب
+                      </a>
+                    )}
                   </div>
-                  {waPhone && (
-                    <a
-                      href={`https://wa.me/${waPhone}?text=${absMsg}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 5,
-                        padding: '6px 12px', borderRadius: 20,
-                        background: '#25D366', color: 'white',
-                        fontSize: 12, fontWeight: 700, textDecoration: 'none',
-                        boxShadow: '0 2px 8px rgba(37,211,102,0.35)',
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      <span style={{ fontSize: 15 }}>📱</span> إشعار واتساب
-                    </a>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
 
       {showPdf && isAdmin && stats && (

@@ -55,19 +55,88 @@ export async function GET(req: NextRequest) {
       Note.countDocuments({ isCompleted: false }),
       Payment.countDocuments({ month: currentMonth, status: 'paid' }),
       Payment.countDocuments({ month: currentMonth, status: 'unpaid' }),
-      Attendance.countDocuments({ status: 'present' }),
-      Attendance.countDocuments({ status: 'absent' }),
+      Attendance.countDocuments({ status: 'present', date: today }),
+      Attendance.countDocuments({ status: 'absent', date: today }),
       Payment.aggregate([
         { $match: { status: { $in: ['paid', 'partial'] } } },
-        { $group: { _id: null, total: { $sum: '$amount' } } },
+        {
+          $lookup: {
+            from: 'teachers',
+            localField: 'teacher',
+            foreignField: '_id',
+            as: 'teacherDoc'
+          }
+        },
+        { $unwind: { path: '$teacherDoc', preserveNullAndEmptyArrays: true } },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: '$amount' },
+            academyShare: {
+              $sum: {
+                $cond: [
+                  { $ifNull: ['$teacherDoc', false] },
+                  { $multiply: ['$amount', { $divide: [{ $ifNull: ['$teacherDoc.academyPercentage', 100] }, 100] }] },
+                  '$amount'
+                ]
+              }
+            }
+          }
+        }
       ]),
       Payment.aggregate([
         { $match: { status: { $in: ['paid', 'partial'] }, paidAt: { $gte: monthStart, $lte: monthEnd } } },
-        { $group: { _id: null, total: { $sum: '$amount' } } },
+        {
+          $lookup: {
+            from: 'teachers',
+            localField: 'teacher',
+            foreignField: '_id',
+            as: 'teacherDoc'
+          }
+        },
+        { $unwind: { path: '$teacherDoc', preserveNullAndEmptyArrays: true } },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: '$amount' },
+            academyShare: {
+              $sum: {
+                $cond: [
+                  { $ifNull: ['$teacherDoc', false] },
+                  { $multiply: ['$amount', { $divide: [{ $ifNull: ['$teacherDoc.academyPercentage', 100] }, 100] }] },
+                  '$amount'
+                ]
+              }
+            }
+          }
+        }
       ]),
       Payment.aggregate([
         { $match: { status: { $in: ['paid', 'partial'] }, paidAt: { $gte: todayStart, $lte: todayEnd } } },
-        { $group: { _id: null, total: { $sum: '$amount' } } },
+        {
+          $lookup: {
+            from: 'teachers',
+            localField: 'teacher',
+            foreignField: '_id',
+            as: 'teacherDoc'
+          }
+        },
+        { $unwind: { path: '$teacherDoc', preserveNullAndEmptyArrays: true } },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: '$amount' },
+            academyShare: {
+              $sum: {
+                $cond: [
+                  { $ifNull: ['$teacherDoc', false] },
+                  { $multiply: ['$amount', { $divide: [{ $ifNull: ['$teacherDoc.academyPercentage', 100] }, 100] }] },
+                  '$amount'
+                ]
+              }
+            }
+          }
+        }
       ]),
       Income.aggregate([{ $group: { _id: null, total: { $sum: '$amount' } } }]),
       Income.aggregate([
@@ -90,10 +159,15 @@ export async function GET(req: NextRequest) {
     ]);
 
     const totalIncome = (incomeAllTime[0]?.total || 0) + (manualIncomeAllTime[0]?.total || 0);
+    const totalAcademyShare = (incomeAllTime[0]?.academyShare || 0) + (manualIncomeAllTime[0]?.total || 0);
     const totalExpenses = expenseAllTime[0]?.total || 0;
+    
     const monthIncome = (incomeMonth[0]?.total || 0) + (manualIncomeMonth[0]?.total || 0);
+    const monthAcademyShare = (incomeMonth[0]?.academyShare || 0) + (manualIncomeMonth[0]?.total || 0);
     const monthExpenses = expenseMonth[0]?.total || 0;
+    
     const todayIncome = (incomeToday[0]?.total || 0) + (manualIncomeToday[0]?.total || 0);
+    const todayAcademyShare = (incomeToday[0]?.academyShare || 0) + (manualIncomeToday[0]?.total || 0);
     const todayExpenses = expenseToday[0]?.total || 0;
 
     return NextResponse.json({
@@ -117,14 +191,17 @@ export async function GET(req: NextRequest) {
         },
         finance: {
           totalIncome,
+          totalAcademyShare,
           totalExpenses,
-          netProfit: totalIncome - totalExpenses,
+          netProfit: totalAcademyShare - totalExpenses,
           monthIncome,
+          monthAcademyShare,
           monthExpenses,
-          netMonth: monthIncome - monthExpenses,
+          netMonth: monthAcademyShare - monthExpenses,
           todayIncome,
+          todayAcademyShare,
           todayExpenses,
-          netToday: todayIncome - todayExpenses,
+          netToday: todayAcademyShare - todayExpenses,
           month: currentMonth,
         },
       },

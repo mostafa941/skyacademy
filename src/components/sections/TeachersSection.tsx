@@ -14,6 +14,7 @@ interface TeacherStaff {
   teacherPercentage: number;
   academyPercentage: number;
   balance: number;
+  totalCollected: number;
   studentCount: number;
   totalAttendance: number;
   presentCount: number;
@@ -674,7 +675,7 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
             </div>
 
             {/* Stats Cards */}
-            <div className="grid-4">
+            <div className="grid-5" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
               <div className="card" style={{ padding: 16 }}>
                 <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>عدد الطلاب الفعلي</div>
                 <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--accent-orange)' }}>{teacherStudents.length} طلاب</div>
@@ -686,11 +687,15 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
               {isAdmin && (
                 <>
                   <div className="card" style={{ padding: 16 }}>
-                    <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>النسبة المتفق عليها</div>
-                    <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--accent-gold)' }}>{selectedStaff.teacherPercentage}% لكم</div>
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>إجمالي التحصيلات</div>
+                    <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--text-primary)' }}>{selectedStaff.totalCollected || 0} ج.م</div>
                   </div>
                   <div className="card" style={{ padding: 16 }}>
-                    <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>الرصيد المالي الحالي</div>
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>نسبة {labelSingle}</div>
+                    <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--accent-gold)' }}>{selectedStaff.teacherPercentage}% لكم</div>
+                  </div>
+                  <div className="card" style={{ padding: 16, border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>الرصيد المستحق (نصيب {labelSingle})</div>
                     <div style={{ fontSize: 24, fontWeight: 800, color: selectedStaff.balance < 0 ? 'var(--error)' : 'var(--success)' }}>
                       {selectedStaff.balance} ج.م
                     </div>
