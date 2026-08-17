@@ -7,6 +7,8 @@ interface RoomSchedule {
   teacherName?: string;
   teacherType?: 'teacher' | 'trainer';
   subjectName?: string;
+  stage?: 'primary' | 'prep' | 'secondary' | '';
+  grade?: string;
   dayOfWeek: string;
   startTime: string;
   endTime: string;
@@ -25,6 +27,7 @@ interface TeacherOption {
   name: string;
   subjectName: string;
   type: 'teacher' | 'trainer';
+  grades?: string[];
 }
 
 const DAYS_OF_WEEK = ['السبت', 'الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
@@ -56,6 +59,67 @@ const EG_HOURS = [
   { label: '11:00 م', value: '23:00' },
 ];
 
+const DEFAULT_TEACHER_SUBJECTS = [
+  'لغة عربية',
+  'لغة إنجليزية',
+  'رياضيات',
+  'علوم',
+  'دراسات اجتماعية',
+  'فيزياء',
+  'كيمياء',
+  'أحياء',
+  'جيولوجيا',
+  'تاريخ',
+  'جغرافيا',
+  'فلسفة ومنطق',
+  'علم نفس واجتماع',
+  'لغة فرنسية',
+  'لغة ألمانية',
+  'لغة إيطالية',
+  'حاسب آلي وتكنولوجيا',
+  'تربية دينية',
+];
+
+const DEFAULT_TRAINER_SPORTS = [
+  'كاراتيه',
+  'جمباز',
+  'كونغ فو',
+  'تايكوندو',
+  'سباحة',
+  'كرة قدم',
+  'ملاكمة',
+  'كيك بوكسنج',
+  'لياقة بدنية وفتنس',
+  'دفاع عن النفس',
+  'كرة سلة',
+  'كرة يد',
+  'تنس طاولة',
+  'جودو',
+  'زومبا وإيروبكس',
+  'كمال أجسام',
+];
+
+const STAGE_GRADES: Record<'primary' | 'prep' | 'secondary', string[]> = {
+  primary: [
+    'الصف الأول الابتدائي',
+    'الصف الثاني الابتدائي',
+    'الصف الثالث الابتدائي',
+    'الصف الرابع الابتدائي',
+    'الصف الخامس الابتدائي',
+    'الصف السادس الابتدائي',
+  ],
+  prep: [
+    'الصف الأول الإعدادي',
+    'الصف الثاني الإعدادي',
+    'الصف الثالث الإعدادي',
+  ],
+  secondary: [
+    'الصف الأول الثانوي',
+    'الصف الثاني الثانوي',
+    'الصف الثالث الثانوي',
+  ],
+};
+
 function formatTime(val: string) {
   if (!val) return val;
   const [hStr, mStr] = val.split(':');
@@ -83,13 +147,16 @@ export default function RoomsSection() {
   // Form
   const [roomForm, setRoomForm] = useState({ id: '', name: '', capacity: 30, notes: '' });
 
-  // Schedule slot form — multi-day + type filter
+  // Schedule slot form — multi-day + type filter + stage/grade
   const [staffTypeFilter, setStaffTypeFilter] = useState<'teacher' | 'trainer'>('teacher');
+  const [selectedStage, setSelectedStage] = useState<'primary' | 'prep' | 'secondary'>('secondary');
+  const [isCustomSubject, setIsCustomSubject] = useState(false);
   const [slotForm, setSlotForm] = useState({
     teacherId: '',
     teacherName: '',
     teacherType: 'teacher' as 'teacher' | 'trainer',
     subjectName: '',
+    grade: 'الصف الأول الثانوي',
     days: [] as string[],
     startTime: '14:00',
     endTime: '16:00',
@@ -146,15 +213,36 @@ export default function RoomsSection() {
     } catch { showToast('خطأ بالحذف', 'error'); }
   };
 
+  const handleStageChange = (stage: 'primary' | 'prep' | 'secondary') => {
+    setSelectedStage(stage);
+    const defaultGrade = STAGE_GRADES[stage][0];
+    setSlotForm(f => ({ ...f, grade: defaultGrade }));
+  };
+
   const handleAddSlot = async () => {
-    if (!selectedRoom || !slotForm.teacherName || slotForm.days.length === 0) {
-      showToast('يرجى اختيار المدرس/المدرب والأيام على الأقل', 'error'); return;
+    if (!selectedRoom || !slotForm.teacherName || !slotForm.subjectName?.trim() || slotForm.days.length === 0) {
+      if (!slotForm.teacherName) {
+        showToast(staffTypeFilter === 'teacher' ? 'يرجى اختيار المدرس أولاً' : 'يرجى اختيار المدرب أولاً', 'error');
+      } else if (!slotForm.subjectName?.trim()) {
+        showToast(staffTypeFilter === 'teacher' ? 'يرجى اختيار أو كتابة المادة الدراسية' : 'يرجى اختيار أو كتابة الرياضة / اللعبة', 'error');
+      } else {
+        showToast('يرجى اختيار يوم واحد على الأقل', 'error');
+      }
+      return;
     }
+
+    if (staffTypeFilter === 'teacher' && !slotForm.grade?.trim()) {
+      showToast('يرجى اختيار الصف الدراسي', 'error');
+      return;
+    }
+
     const newSlots: RoomSchedule[] = slotForm.days.map(day => ({
       teacher: slotForm.teacherId || undefined,
       teacherName: slotForm.teacherName,
       teacherType: slotForm.teacherType,
-      subjectName: slotForm.subjectName,
+      subjectName: slotForm.subjectName.trim(),
+      stage: slotForm.teacherType === 'teacher' ? selectedStage : undefined,
+      grade: slotForm.teacherType === 'teacher' ? slotForm.grade.trim() : undefined,
       dayOfWeek: day,
       startTime: slotForm.startTime,
       endTime: slotForm.endTime,
@@ -163,10 +251,20 @@ export default function RoomsSection() {
     try {
       const res = await fetch('/api/rooms', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: selectedRoom._id, schedule: newSchedule }) });
       if (res.ok) {
-        showToast(`تم إضافة ${slotForm.days.length} موعد للجدول`);
+        showToast(`تم إضافة ${slotForm.days.length} موعد للجدول بنجاح`);
         const updatedRoom = { ...selectedRoom, schedule: newSchedule };
         setSelectedRoom(updatedRoom);
-        setSlotForm({ teacherId: '', teacherName: '', teacherType: staffTypeFilter, subjectName: '', days: [], startTime: '14:00', endTime: '16:00' });
+        setIsCustomSubject(false);
+        setSlotForm({
+          teacherId: '',
+          teacherName: '',
+          teacherType: staffTypeFilter,
+          subjectName: '',
+          grade: STAGE_GRADES[selectedStage][0],
+          days: [],
+          startTime: '14:00',
+          endTime: '16:00',
+        });
         loadData();
         loadRoomStudents(updatedRoom);
       }
@@ -196,6 +294,15 @@ export default function RoomsSection() {
   };
 
   const filteredTeachers = teachers.filter(t => t.type === staffTypeFilter);
+  const selectedStaffMember = teachers.find(t => t.id === slotForm.teacherId);
+
+  const availableSubjectsOrSports = Array.from(
+    new Set([
+      ...(selectedStaffMember?.subjectName ? [selectedStaffMember.subjectName] : []),
+      ...teachers.filter(t => t.type === staffTypeFilter).map(t => t.subjectName).filter(Boolean),
+      ...(staffTypeFilter === 'teacher' ? DEFAULT_TEACHER_SUBJECTS : DEFAULT_TRAINER_SPORTS)
+    ])
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -290,12 +397,15 @@ export default function RoomsSection() {
                       <div key={idx} style={{ background: 'var(--bg-elevated)', padding: '12px 16px', borderRadius: 10, border: '1px solid var(--border)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
                           <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 700, color: 'var(--accent-orange)', fontSize: 14 }}>
-                              {isTrainer ? '🏋️' : '👨‍🏫'} {slot.teacherName}
-                              <span className={`badge ${isTrainer ? 'badge-info' : 'badge-orange'}`} style={{ marginRight: 8, fontSize: 11 }}>{isTrainer ? 'مدرب' : 'مدرس'}</span>
+                            <div style={{ fontWeight: 700, color: 'var(--accent-orange)', fontSize: 14, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <span>{isTrainer ? '🏋️' : '👨‍🏫'} {slot.teacherName}</span>
+                              <span className={`badge ${isTrainer ? 'badge-info' : 'badge-orange'}`} style={{ fontSize: 11 }}>{isTrainer ? 'مدرب' : 'مدرس'}</span>
+                              {!isTrainer && slot.grade && (
+                                <span className="badge badge-info" style={{ fontSize: 11 }}>🎓 {slot.grade}</span>
+                              )}
                             </div>
                             <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
-                              📚 {slot.subjectName || '—'} &nbsp;|&nbsp; 🗓️ {slot.dayOfWeek} &nbsp;|&nbsp; ⏰ {formatTime(slot.startTime)} → {formatTime(slot.endTime)}
+                              {isTrainer ? '🥋' : '📚'} {slot.subjectName || '—'} &nbsp;|&nbsp; 🗓️ {slot.dayOfWeek} &nbsp;|&nbsp; ⏰ {formatTime(slot.startTime)} → {formatTime(slot.endTime)}
                             </div>
                             {students.length > 0 && (
                               <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)', display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
@@ -329,7 +439,17 @@ export default function RoomsSection() {
                   <div style={{ display: 'flex', gap: 10 }}>
                     {(['teacher', 'trainer'] as const).map(t => (
                       <label key={t} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', padding: '8px 16px', borderRadius: 8, border: `2px solid ${staffTypeFilter === t ? 'var(--accent-orange)' : 'var(--border)'}`, background: staffTypeFilter === t ? 'var(--accent-orange-muted)' : 'transparent', fontWeight: 600, fontSize: 14, transition: 'all 0.15s', userSelect: 'none' }}>
-                        <input type="radio" name="staff-type" checked={staffTypeFilter === t} onChange={() => { setStaffTypeFilter(t); setSlotForm(f => ({ ...f, teacherId: '', teacherName: '', teacherType: t, subjectName: '' })); }} style={{ display: 'none' }} />
+                        <input
+                          type="radio"
+                          name="staff-type"
+                          checked={staffTypeFilter === t}
+                          onChange={() => {
+                            setStaffTypeFilter(t);
+                            setIsCustomSubject(false);
+                            setSlotForm(f => ({ ...f, teacherId: '', teacherName: '', teacherType: t, subjectName: '' }));
+                          }}
+                          style={{ display: 'none' }}
+                        />
                         {t === 'teacher' ? '👨‍🏫 مدرس' : '🏋️ مدرب'}
                       </label>
                     ))}
@@ -338,16 +458,162 @@ export default function RoomsSection() {
 
                 {/* Staff Selection */}
                 <div className="input-group">
-                  <label className="input-label">{staffTypeFilter === 'teacher' ? 'المدرس *' : 'المدرب *'}</label>
-                  <select className="input" value={slotForm.teacherId} onChange={(e) => {
-                    const t = filteredTeachers.find(x => x.id === e.target.value);
-                    setSlotForm(f => ({ ...f, teacherId: e.target.value, teacherName: t?.name || '', teacherType: staffTypeFilter, subjectName: t?.subjectName || '' }));
-                  }}>
+                  <label className="input-label">{staffTypeFilter === 'teacher' ? '👨‍🏫 اختر المدرس *' : '🏋️ اختر المدرب *'}</label>
+                  <select
+                    className="input"
+                    value={slotForm.teacherId}
+                    onChange={(e) => {
+                      const staffId = e.target.value;
+                      const t = filteredTeachers.find(x => x.id === staffId);
+                      setIsCustomSubject(false);
+
+                      let nextStage: 'primary' | 'prep' | 'secondary' = selectedStage;
+                      let nextGrade = slotForm.grade;
+
+                      if (t?.grades && t.grades.length > 0) {
+                        const firstGrade = t.grades[0];
+                        if (firstGrade.includes('الابتدائي')) nextStage = 'primary';
+                        else if (firstGrade.includes('الإعدادي')) nextStage = 'prep';
+                        else if (firstGrade.includes('الثانوي')) nextStage = 'secondary';
+                        nextGrade = firstGrade;
+                        setSelectedStage(nextStage);
+                      } else if (!STAGE_GRADES[selectedStage].includes(nextGrade)) {
+                        nextGrade = STAGE_GRADES[selectedStage][0];
+                      }
+
+                      setSlotForm(f => ({
+                        ...f,
+                        teacherId: staffId,
+                        teacherName: t?.name || '',
+                        teacherType: staffTypeFilter,
+                        subjectName: t?.subjectName || '',
+                        grade: nextGrade,
+                      }));
+                    }}
+                  >
                     <option value="">{staffTypeFilter === 'teacher' ? 'اختر المدرس...' : 'اختر المدرب...'}</option>
-                    {filteredTeachers.map(t => <option key={t.id} value={t.id}>{t.name} ({t.subjectName})</option>)}
+                    {filteredTeachers.map(t => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} {t.subjectName ? `(${t.subjectName})` : ''}
+                      </option>
+                    ))}
                   </select>
-                  {filteredTeachers.length === 0 && <div style={{ fontSize: 12, color: 'var(--error)', marginTop: 4 }}>لا يوجد {staffTypeFilter === 'teacher' ? 'مدرسين' : 'مدربين'} مسجلين</div>}
+                  {filteredTeachers.length === 0 && (
+                    <div style={{ fontSize: 12, color: 'var(--error)', marginTop: 4 }}>
+                      لا يوجد {staffTypeFilter === 'teacher' ? 'مدرسين' : 'مدربين'} مسجلين
+                    </div>
+                  )}
                 </div>
+
+                {/* Subject / Sport Selection */}
+                <div className="input-group">
+                  <label className="input-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>
+                      {staffTypeFilter === 'teacher' ? '📚 المادة الدراسية *' : '🥋 الرياضة / اللعبة *'}
+                    </span>
+                    {selectedStaffMember?.subjectName && (
+                      <span style={{ fontSize: 11, color: 'var(--accent-orange)', fontWeight: 'normal' }}>
+                        {staffTypeFilter === 'teacher' ? `(المسجلة للمدرس: ${selectedStaffMember.subjectName})` : `(المسجلة للمدرب: ${selectedStaffMember.subjectName})`}
+                      </span>
+                    )}
+                  </label>
+
+                  {!isCustomSubject ? (
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <select
+                        className="input"
+                        value={slotForm.subjectName}
+                        onChange={(e) => {
+                          if (e.target.value === '__custom__') {
+                            setIsCustomSubject(true);
+                            setSlotForm(f => ({ ...f, subjectName: '' }));
+                          } else {
+                            setSlotForm(f => ({ ...f, subjectName: e.target.value }));
+                          }
+                        }}
+                        style={{ flex: 1 }}
+                      >
+                        <option value="">{staffTypeFilter === 'teacher' ? 'اختر المادة...' : 'اختر اللعبة...'}</option>
+                        {availableSubjectsOrSports.map(sub => (
+                          <option key={sub} value={sub}>
+                            {sub} {selectedStaffMember?.subjectName === sub ? '⭐' : ''}
+                          </option>
+                        ))}
+                        <option value="__custom__">✏️ إدخال اسم آخر يدوي...</option>
+                      </select>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        title="كتابة يدوية"
+                        onClick={() => setIsCustomSubject(true)}
+                        style={{ whiteSpace: 'nowrap', padding: '0 12px' }}
+                      >
+                        ✏️ كتابة يدوي
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder={staffTypeFilter === 'teacher' ? 'اكتب اسم المادة...' : 'اكتب اسم اللعبة/الرياضة...'}
+                        value={slotForm.subjectName}
+                        onChange={(e) => setSlotForm(f => ({ ...f, subjectName: e.target.value }))}
+                        style={{ flex: 1 }}
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => {
+                          setIsCustomSubject(false);
+                          if (!slotForm.subjectName) {
+                            setSlotForm(f => ({ ...f, subjectName: selectedStaffMember?.subjectName || '' }));
+                          }
+                        }}
+                        style={{ whiteSpace: 'nowrap', padding: '0 12px' }}
+                      >
+                        📋 اختيار من القائمة
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Stage and Grade selection for Teacher */}
+                {staffTypeFilter === 'teacher' && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div className="input-group">
+                      <label className="input-label">المرحلة الدراسية *</label>
+                      <select
+                        className="input"
+                        value={selectedStage}
+                        onChange={(e) => handleStageChange(e.target.value as 'primary' | 'prep' | 'secondary')}
+                      >
+                        <option value="primary">🎒 ابتدائي</option>
+                        <option value="prep">🏫 إعدادي</option>
+                        <option value="secondary">🎓 ثانوي</option>
+                      </select>
+                    </div>
+
+                    <div className="input-group">
+                      <label className="input-label">الصف الدراسي (السنة) *</label>
+                      <select
+                        className="input"
+                        value={slotForm.grade}
+                        onChange={(e) => setSlotForm(f => ({ ...f, grade: e.target.value }))}
+                      >
+                        {STAGE_GRADES[selectedStage].map((gr) => {
+                          const isTeacherGrade = selectedStaffMember?.grades?.includes(gr);
+                          return (
+                            <option key={gr} value={gr}>
+                              {gr} {isTeacherGrade ? '⭐' : ''}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+                  </div>
+                )}
 
                 {/* Days multi-select */}
                 <div className="input-group">

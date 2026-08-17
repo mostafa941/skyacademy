@@ -3,7 +3,10 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 export interface IRoomSchedule {
   teacher?: mongoose.Types.ObjectId;
   teacherName?: string;
+  teacherType?: 'teacher' | 'trainer';
   subjectName?: string;
+  stage?: string;
+  grade?: string;
   dayOfWeek: string; // e.g. "الأحد", "الإثنين"
   startTime: string; // e.g. "14:00"
   endTime: string;   // e.g. "16:00"
@@ -38,7 +41,10 @@ const RoomSchema = new Schema<IRoom>(
           ref: 'Teacher',
         },
         teacherName: { type: String, trim: true },
+        teacherType: { type: String, trim: true },
         subjectName: { type: String, trim: true },
+        stage: { type: String, trim: true },
+        grade: { type: String, trim: true },
         dayOfWeek: { type: String, required: true, trim: true },
         startTime: { type: String, required: true, trim: true },
         endTime: { type: String, required: true, trim: true },
