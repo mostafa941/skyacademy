@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { openStudentWhatsAppReport, AttendanceRecord } from '@/lib/whatsapp';
 
 interface Student {
   id: string;
@@ -12,10 +13,19 @@ interface Student {
   teacherName: string;
   grade: string;
   monthlyFee: number;
+  notes?: string;
+  grades?: Array<{ title: string; score: number; maxScore: number; date?: string }>;
   paymentStatus: 'paid' | 'unpaid' | 'partial';
   paymentAmount: number;
   paymentType?: 'session' | 'monthly';
+  paymentReason?: string;
   remainingAmount: number;
+  remainingReason?: string;
+  totalAttendance?: number;
+  presentCount?: number;
+  absentCount?: number;
+  excusedCount?: number;
+  attendanceHistory?: AttendanceRecord[];
   type?: 'student' | 'trainee';
 }
 
@@ -210,6 +220,7 @@ export default function StudentsPaymentStatusSection({ paymentStatus }: Students
                 <th>قيمة الاشتراك</th>
                 <th>حالة الدفع</th>
                 {paymentStatus === 'partial' && <th>المتبقي</th>}
+                <th>تقرير واتساب</th>
               </tr>
             </thead>
             <tbody>
@@ -225,7 +236,7 @@ export default function StudentsPaymentStatusSection({ paymentStatus }: Students
                       {st.type === 'trainee' ? `🏋️ ${st.teacherName}` : `👨‍🏫 ${st.teacherName}`}
                     </div>
                   </td>
-                  <td dir="ltr" style={{ textAlign: 'right' }}>{st.phone}</td>
+                  <td dir="ltr" style={{ textAlign: 'right' }}>{st.parentPhone || st.phone}</td>
                   <td>{st.monthlyFee} ج.م</td>
                   <td>
                     {st.paymentStatus === 'paid' ? (
@@ -239,6 +250,28 @@ export default function StudentsPaymentStatusSection({ paymentStatus }: Students
                   {paymentStatus === 'partial' && (
                     <td style={{ fontWeight: 700, color: 'var(--error)' }}>{st.remainingAmount} ج.م</td>
                   )}
+                  <td>
+                    <button
+                      className="btn btn-sm"
+                      title="إرسال التقرير الشامل على واتساب"
+                      onClick={() => openStudentWhatsAppReport(st)}
+                      style={{
+                        background: '#25D366',
+                        color: 'white',
+                        border: 'none',
+                        padding: '6px 12px',
+                        borderRadius: 'var(--radius-md)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        fontWeight: 700,
+                        fontSize: 12,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <span>📱</span> إرسال التقرير
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

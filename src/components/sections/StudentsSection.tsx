@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import PDFReport from '../PDFReport';
+import { openStudentWhatsAppReport, AttendanceRecord } from '@/lib/whatsapp';
 
 interface Student {
   id: string;
@@ -24,6 +25,8 @@ interface Student {
   totalAttendance: number;
   presentCount: number;
   absentCount: number;
+  excusedCount?: number;
+  attendanceHistory?: AttendanceRecord[];
   type?: 'student' | 'trainee';
 }
 
@@ -265,34 +268,7 @@ export default function StudentsSection() {
   };
 
   const handleSendWhatsApp = (st: Student) => {
-    const cleanPhone = st.parentPhone.replace(/[^0-9]/g, '');
-    let formattedPhone = cleanPhone;
-    if (cleanPhone.startsWith('01')) formattedPhone = '2' + cleanPhone;
-
-    const gradesText = st.grades && st.grades.length > 0
-      ? st.grades.map(g => `• ${g.title}: ${g.score}/${g.maxScore}`).join('\n')
-      : 'لا يوجد درجات مسجلة بعد';
-
-    const payText = st.paymentStatus === 'paid'
-      ? `✅ تم الدفع (${st.paymentAmount} ج.م - ${st.paymentReason || ''})`
-      : st.paymentStatus === 'partial'
-      ? `⚠️ دفع جزئي (${st.paymentAmount} ج.م) والمتبقي: ${st.remainingAmount} ج.م (سبب: ${st.remainingReason || 'غير محدد'})`
-      : `❌ لم يتم دفع المصاريف.`;
-
-    const message = `تقرير الطالب: ${st.name} 🎓\n` +
-      `المادة: ${st.subjectName}\n` +
-      `المدرس: ${st.teacherName}\n` +
-      `-------------------------\n` +
-      `📅 الحضور والغياب:\n` +
-      `حاضر: ${st.presentCount} | غائب: ${st.absentCount}\n\n` +
-      `💰 حالة المصاريف:\n${payText}\n\n` +
-      `⭐ الدرجات والأداء:\n${gradesText}\n\n` +
-      `📝 ملاحظات الأكاديمية:\n${st.notes || 'لا يوجد ملاحظات'}\n` +
-      `-------------------------\n` +
-      `تحيات أكاديمية اسكاي (Sky Academy) 🌤️`;
-
-    const url = `https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(message)}`;
-    window.open(url, '_blank');
+    openStudentWhatsAppReport(st);
   };
 
   const uniqueSubjects = Array.from(
@@ -422,9 +398,40 @@ export default function StudentsSection() {
                         <span style={{ color: 'var(--error)', fontWeight: 700 }}>{st.absentCount} غائب</span>
                       </td>
                       <td>
-                        <button className="btn btn-secondary btn-sm" onClick={(e) => { e.stopPropagation(); setSelectedStudent(st); setCurrentView('profile'); }}>
-                          فتح الملف
-                        </button>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedStudent(st);
+                              setCurrentView('profile');
+                            }}
+                          >
+                            فتح الملف
+                          </button>
+                          <button
+                            className="btn btn-sm"
+                            title="إرسال التقرير الشامل على واتساب"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSendWhatsApp(st);
+                            }}
+                            style={{
+                              background: '#25D366',
+                              color: 'white',
+                              border: 'none',
+                              padding: '6px 10px',
+                              borderRadius: 'var(--radius-md)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              fontWeight: 700,
+                              fontSize: 12,
+                            }}
+                          >
+                            <span>💬</span> تقرير
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

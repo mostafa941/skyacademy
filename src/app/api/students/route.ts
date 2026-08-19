@@ -50,12 +50,21 @@ export async function GET(req: NextRequest) {
       students.map(async (st) => {
         const [payment, attendances] = await Promise.all([
           Payment.findOne({ student: st._id, month: targetMonth }),
-          Attendance.find({ student: st._id }),
+          Attendance.find({ student: st._id }).sort({ date: -1 }),
         ]);
 
         const totalAtt = attendances.length;
         const presentAtt = attendances.filter((a) => a.status === 'present').length;
         const absentAtt = attendances.filter((a) => a.status === 'absent').length;
+        const excusedAtt = attendances.filter((a) => a.status === 'excused').length;
+
+        const attendanceHistory = attendances.map((a) => ({
+          id: a._id.toString(),
+          date: a.date,
+          status: a.status,
+          subjectName: a.subjectName,
+          notes: a.notes,
+        }));
 
         return {
           id: st._id.toString(),
@@ -71,12 +80,15 @@ export async function GET(req: NextRequest) {
           grades: st.grades || [],
           paymentStatus: payment ? payment.status : 'unpaid',
           paymentAmount: payment ? payment.amount : 0,
+          paymentType: payment ? (payment.paymentType || 'monthly') : 'monthly',
           paymentReason: payment ? payment.paymentReason : '',
           remainingAmount: payment ? payment.remainingAmount : 0,
           remainingReason: payment ? payment.remainingReason : '',
           totalAttendance: totalAtt,
           presentCount: presentAtt,
           absentCount: absentAtt,
+          excusedCount: excusedAtt,
+          attendanceHistory,
           type: st.type || 'student',
           createdAt: st.createdAt,
         };
