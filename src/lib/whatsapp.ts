@@ -153,3 +153,51 @@ export function openStudentWhatsAppReport(st: WhatsAppStudentReportData): void {
   const url = `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`;
   window.open(url, '_blank');
 }
+
+/** Generates a brief details message for the student/trainee */
+export function generateStudentWhatsAppDetails(st: WhatsAppStudentReportData): string {
+  const isTrainee = st.type === 'trainee';
+  const roleLabel = isTrainee ? 'المتدرب' : 'الطالب';
+  const mentorLabel = isTrainee ? 'المدرب' : 'المدرس';
+  const fieldLabel = isTrainee ? 'التخصص / اللعبة' : 'المادة';
+
+  let payStatusStr = '';
+  if (st.paymentStatus === 'paid') {
+    payStatusStr = `✅ تم السداد بالكامل (${st.paymentAmount ?? st.monthlyFee ?? 0} ج.م)`;
+  } else if (st.paymentStatus === 'partial') {
+    payStatusStr = `⚠️ سداد جزئي — المدفوع: ${st.paymentAmount || 0} ج.م | المتبقي: ${st.remainingAmount || 0} ج.م`;
+  } else if (st.paymentStatus === 'unpaid') {
+    payStatusStr = `❌ لم يتم السداد (${st.monthlyFee || 0} ج.م)`;
+  } else {
+    payStatusStr = 'غير محدد';
+  }
+
+  const gradeLine = !isTrainee && st.grade ? `🏫 *الصف:* ${st.grade}\n` : '';
+  const currentMonth = st.month || new Date().toISOString().substring(0, 7);
+
+  const message =
+`${isTrainee ? '🏋️' : '🎓'} *تفاصيل ${roleLabel}: ${st.name}*
+━━━━━━━━━━━━━━━━━━━━
+📚 *${fieldLabel}:* ${st.subjectName || 'غير محدد'}
+👨‍🏫 *${mentorLabel}:* ${st.teacherName || 'غير محدد'}
+${gradeLine}📱 *الهاتف:* ${st.phone || 'غير محدد'}
+${st.parentPhone ? `📱 *هاتف ولي الأمر:* ${st.parentPhone}\n` : ''}💰 *قيمة الاشتراك:* ${st.monthlyFee || 0} ج.م
+📅 *شهر:* ${currentMonth}
+💳 *حالة السداد:* ${payStatusStr}
+${st.notes?.trim() ? `📝 *ملاحظات:* ${st.notes.trim()}\n` : ''}━━━━━━━━━━━━━━━━━━━━
+🌤️ *أكاديمية سكاي (Sky Academy)*`;
+
+  return message;
+}
+
+/** Opens a WhatsApp chat with a brief details message — uses any available phone number */
+export function openStudentWhatsAppDetails(st: WhatsAppStudentReportData): void {
+  const phone = formatWhatsAppPhone(st.parentPhone || st.phone);
+  const message = generateStudentWhatsAppDetails(st);
+  if (!phone) {
+    alert('لا يوجد رقم هاتف مسجل لهذا الطالب أو ولي الأمر');
+    return;
+  }
+  const url = `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`;
+  window.open(url, '_blank');
+}

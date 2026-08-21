@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import PDFReport from '../PDFReport';
-import { openStudentWhatsAppReport, AttendanceRecord } from '@/lib/whatsapp';
+import { openStudentWhatsAppReport, openStudentWhatsAppDetails, AttendanceRecord } from '@/lib/whatsapp';
 
 interface Student {
   id: string;
@@ -431,6 +431,28 @@ export default function StudentsSection() {
                           >
                             <span>💬</span> تقرير
                           </button>
+                          <button
+                            className="btn btn-sm"
+                            title="إرسال تفاصيل الطالب/المتدرب على واتساب"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openStudentWhatsAppDetails(st);
+                            }}
+                            style={{
+                              background: '#128C7E',
+                              color: 'white',
+                              border: 'none',
+                              padding: '6px 10px',
+                              borderRadius: 'var(--radius-md)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              fontWeight: 700,
+                              fontSize: 12,
+                            }}
+                          >
+                            <span>📋</span> تفاصيل
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -458,7 +480,10 @@ export default function StudentsSection() {
             </div>
             <div style={{ marginRight: 'auto', display: 'flex', gap: 8 }}>
               <button className="btn btn-primary" onClick={() => handleSendWhatsApp(selectedStudent)} style={{ background: '#25D366', borderColor: '#25D366' }}>
-                💬 واتس اب
+                💬 تقرير واتس
+              </button>
+              <button className="btn btn-primary" onClick={() => openStudentWhatsAppDetails(selectedStudent)} style={{ background: '#128C7E', borderColor: '#128C7E' }}>
+                📋 إرسال تفاصيل
               </button>
               <button className="btn btn-secondary" onClick={() => setShowPdf(true)}>
                 📄 تصدير PDF

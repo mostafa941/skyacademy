@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { openStudentWhatsAppReport, AttendanceRecord } from '@/lib/whatsapp';
+import { openStudentWhatsAppReport, openStudentWhatsAppDetails, AttendanceRecord } from '@/lib/whatsapp';
 
 interface Student {
   id: string;
@@ -251,26 +251,48 @@ export default function StudentsPaymentStatusSection({ paymentStatus }: Students
                     <td style={{ fontWeight: 700, color: 'var(--error)' }}>{st.remainingAmount} ج.م</td>
                   )}
                   <td>
-                    <button
-                      className="btn btn-sm"
-                      title="إرسال التقرير الشامل على واتساب"
-                      onClick={() => openStudentWhatsAppReport(st)}
-                      style={{
-                        background: '#25D366',
-                        color: 'white',
-                        border: 'none',
-                        padding: '6px 12px',
-                        borderRadius: 'var(--radius-md)',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        fontWeight: 700,
-                        fontSize: 12,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <span>📱</span> إرسال التقرير
-                    </button>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <button
+                        className="btn btn-sm"
+                        title="إرسال التقرير الشامل على واتساب"
+                        onClick={() => openStudentWhatsAppReport(st)}
+                        style={{
+                          background: '#25D366',
+                          color: 'white',
+                          border: 'none',
+                          padding: '6px 12px',
+                          borderRadius: 'var(--radius-md)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          fontWeight: 700,
+                          fontSize: 12,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <span>📱</span> إرسال التقرير
+                      </button>
+                      <button
+                        className="btn btn-sm"
+                        title="إرسال تفاصيل الطالب/المتدرب على واتساب"
+                        onClick={() => openStudentWhatsAppDetails(st)}
+                        style={{
+                          background: '#128C7E',
+                          color: 'white',
+                          border: 'none',
+                          padding: '6px 12px',
+                          borderRadius: 'var(--radius-md)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          fontWeight: 700,
+                          fontSize: 12,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <span>📋</span> إرسال تفاصيل
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
