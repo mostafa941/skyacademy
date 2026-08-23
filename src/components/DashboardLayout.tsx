@@ -2,18 +2,20 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import OverviewSection from './sections/OverviewSection';
-import StudentsSection from './sections/StudentsSection';
-import TeachersSection from './sections/TeachersSection';
-import RoomsSection from './sections/RoomsSection';
-import IncomeSection from './sections/IncomeSection';
-import ExpensesSection from './sections/ExpensesSection';
-import NotesSection from './sections/NotesSection';
-import StudentsPaymentStatusSection from './sections/StudentsPaymentStatusSection';
-import UsersSection from './sections/UsersSection';
-import SettlementsSection from './sections/SettlementsSection';
-import NotificationsSection from './sections/NotificationsSection';
-import DailyMonitorSection from './sections/DailyMonitorSection';
+import dynamic from 'next/dynamic';
+
+const OverviewSection = dynamic(() => import('./sections/OverviewSection'), { ssr: false });
+const StudentsSection = dynamic(() => import('./sections/StudentsSection'), { ssr: false });
+const TeachersSection = dynamic(() => import('./sections/TeachersSection'), { ssr: false });
+const RoomsSection = dynamic(() => import('./sections/RoomsSection'), { ssr: false });
+const IncomeSection = dynamic(() => import('./sections/IncomeSection'), { ssr: false });
+const ExpensesSection = dynamic(() => import('./sections/ExpensesSection'), { ssr: false });
+const NotesSection = dynamic(() => import('./sections/NotesSection'), { ssr: false });
+const StudentsPaymentStatusSection = dynamic(() => import('./sections/StudentsPaymentStatusSection'), { ssr: false });
+const UsersSection = dynamic(() => import('./sections/UsersSection'), { ssr: false });
+const SettlementsSection = dynamic(() => import('./sections/SettlementsSection'), { ssr: false });
+const NotificationsSection = dynamic(() => import('./sections/NotificationsSection'), { ssr: false });
+const DailyMonitorSection = dynamic(() => import('./sections/DailyMonitorSection'), { ssr: false });
 
 interface User {
   id: string;

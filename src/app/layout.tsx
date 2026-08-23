@@ -1,5 +1,18 @@
 import type { Metadata, Viewport } from 'next';
+import { Cairo, Outfit } from 'next/font/google';
 import './globals.css';
+
+const cairo = Cairo({ 
+  subsets: ['arabic', 'latin'], 
+  variable: '--font-cairo',
+  display: 'swap',
+});
+
+const outfit = Outfit({ 
+  subsets: ['latin'], 
+  variable: '--font-outfit',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'Sky Academy | اسكاي اكاديمي',
@@ -27,7 +40,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ar" dir="rtl">
+    <html lang="ar" dir="rtl" className={`${cairo.variable} ${outfit.variable}`}>
       <head>
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
         <link rel="icon" href="/favicon.ico" />

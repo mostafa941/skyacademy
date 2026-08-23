@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&family=Outfit:wght@300;400;500;600;700;800&display=swap');
+
 
 :root {
   --bg-primary: #08080f;
@@ -56,7 +56,7 @@ html {
 }
 
 body {
-  font-family: 'Cairo', 'Outfit', sans-serif;
+  font-family: var(--font-cairo), var(--font-outfit), sans-serif;
   background-color: var(--bg-primary);
   color: var(--text-primary);
   min-height: 100vh;
