@@ -42,7 +42,10 @@ const AttendanceSchema = new Schema<IAttendance>(
   }
 );
 
-AttendanceSchema.index({ student: 1, date: 1 });
+// Unique per student per day, fast date-range queries
+AttendanceSchema.index({ student: 1, date: 1 }, { unique: true });
+AttendanceSchema.index({ date: 1 });
+AttendanceSchema.index({ status: 1 });
 
 const Attendance: Model<IAttendance> =
   mongoose.models.Attendance || mongoose.model<IAttendance>('Attendance', AttendanceSchema);

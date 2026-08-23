@@ -13,18 +13,24 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { identifier, password } = body; // identifier can be email or phone
 
-    if (!identifier || !password) {
+    if (!identifier || typeof identifier !== 'string' || !password || typeof password !== 'string') {
       return NextResponse.json({ error: 'الرجاء إدخال اسم المستخدم/البريد/رقم الهاتف وكلمة المرور' }, { status: 400 });
     }
 
-    const cleanId = identifier.trim().toLowerCase();
+    // Sanitize inputs — max length to prevent abuse
+    const cleanId = identifier.trim().toLowerCase().slice(0, 100);
+    const cleanPass = password.slice(0, 200);
+
+    if (!cleanId || !cleanPass) {
+      return NextResponse.json({ error: 'بيانات الدخول غير مكتملة' }, { status: 400 });
+    }
 
     // Search user by email or phone
     const user = await User.findOne({
       $or: [{ email: cleanId }, { phone: cleanId }],
     });
 
-    if (!user || user.password !== password) {
+    if (!user || user.password !== cleanPass) {
       return NextResponse.json({ error: 'بيانات الدخول غير صحيحة' }, { status: 401 });
     }
 

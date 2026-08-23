@@ -7,6 +7,7 @@ import TeacherAttendance from '@/models/TeacherAttendance';
 import Payment from '@/models/Payment';
 import Expense from '@/models/Expense';
 import { getCurrentUser } from '@/lib/auth';
+import { sanitizeString, isValidObjectId, sanitizePercentage, sanitizeNumber } from '@/lib/validate';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,35 +20,34 @@ export async function GET(req: NextRequest) {
     await connectToDatabase();
 
     const { searchParams } = new URL(req.url);
-    const type = searchParams.get('type'); // 'teacher' | 'trainer'
+    const type = searchParams.get('type');
 
-    let query: any = {};
-    if (type) {
-      query.type = type;
-    }
+    // Validate type param
+    const validType = type === 'teacher' || type === 'trainer' ? type : undefined;
+    const query: Record<string, unknown> = {};
+    if (validType) query.type = validType;
 
-    const teachers = await Teacher.find(query).populate('room').sort({ createdAt: -1 });
+    const teachers = await Teacher.find(query).populate('room').sort({ createdAt: -1 }).lean();
 
     const teacherList = await Promise.all(
       teachers.map(async (t) => {
+        const teacherId = (t._id as any).toString();
         const [studentCount, attendanceRecords, payments, loans] = await Promise.all([
           Student.countDocuments({ teacher: t._id }),
-          TeacherAttendance.find({ teacher: t._id }),
-          Payment.find({ teacher: t._id, status: { $in: ['paid', 'partial'] } }),
-          Expense.find({ teacher: t._id, type: 'teacher_loan' }),
+          TeacherAttendance.find({ teacher: t._id }).select('status').lean(),
+          Payment.find({ teacher: t._id, status: { $in: ['paid', 'partial'] } }).select('amount').lean(),
+          Expense.find({ teacher: t._id, type: 'teacher_loan' }).select('amount').lean(),
         ]);
 
-        const totalAtt = attendanceRecords.length;
         const presentCount = attendanceRecords.filter((a: any) => a.status === 'present').length;
         const absentCount = attendanceRecords.filter((a: any) => a.status === 'absent').length;
-        
         const totalCollected = payments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
         const totalLoans = loans.reduce((sum: number, e: any) => sum + (e.amount || 0), 0);
-        const rawTeacherShare = payments.reduce((sum: number, p: any) => sum + ((p.amount || 0) * (t.teacherPercentage / 100)), 0);
+        const rawTeacherShare = payments.reduce((sum: number, p: any) => sum + ((p.amount || 0) * ((t.teacherPercentage || 50) / 100)), 0);
         const calculatedBalance = rawTeacherShare - totalLoans;
 
         return {
-          id: t._id.toString(),
+          id: teacherId,
           name: t.name,
           phone: t.phone,
           type: t.type,
@@ -57,10 +57,10 @@ export async function GET(req: NextRequest) {
           roomName: (t.room as any)?.name || 'غير محددة',
           teacherPercentage: t.teacherPercentage,
           academyPercentage: t.academyPercentage,
-          balance: calculatedBalance, // dynamically calculated, fixes sync issues
+          balance: calculatedBalance,
           totalCollected,
           studentCount,
-          totalAttendance: totalAtt,
+          totalAttendance: attendanceRecords.length,
           presentCount,
           absentCount,
           createdAt: t.createdAt,
@@ -83,22 +83,37 @@ export async function POST(req: NextRequest) {
     await connectToDatabase();
 
     const body = await req.json();
-    const { name, phone, type, subjectName, grades, roomId, teacherPercentage, academyPercentage, balance } = body;
+    const { name, phone, type, subjectName, grades, roomId, teacherPercentage, academyPercentage } = body;
 
-    if (!name || !phone || !subjectName) {
+    const cleanName = sanitizeString(name, 200);
+    const cleanPhone = sanitizeString(phone, 20);
+    const cleanSubject = sanitizeString(subjectName, 200);
+
+    if (!cleanName || !cleanPhone || !cleanSubject) {
       return NextResponse.json({ error: 'الاسم ورقم الهاتف والمادة مطلوبة' }, { status: 400 });
     }
+    if (cleanName.length < 2) {
+      return NextResponse.json({ error: 'الاسم يجب أن يكون حرفين على الأقل' }, { status: 400 });
+    }
+
+    const validType = type === 'trainer' ? 'trainer' : 'teacher';
+    const validRoomId = roomId && isValidObjectId(roomId) ? roomId : undefined;
+    const tPct = sanitizePercentage(teacherPercentage, 50);
+    const aPct = 100 - tPct;
+    const cleanGrades = Array.isArray(grades)
+      ? grades.map((g: unknown) => sanitizeString(g, 100)).filter(Boolean).slice(0, 20)
+      : [];
 
     const teacher = await Teacher.create({
-      name: name.trim(),
-      phone: phone.trim(),
-      type: type === 'trainer' ? 'trainer' : 'teacher',
-      subjectName: subjectName.trim(),
-      grades: grades || [],
-      room: roomId || undefined,
-      teacherPercentage: Number(teacherPercentage) || 50,
-      academyPercentage: Number(academyPercentage) || 50,
-      balance: Number(balance) || 0,
+      name: cleanName,
+      phone: cleanPhone,
+      type: validType,
+      subjectName: cleanSubject,
+      grades: cleanGrades,
+      room: validRoomId,
+      teacherPercentage: tPct,
+      academyPercentage: aPct,
+      balance: 0,
     });
 
     return NextResponse.json({ success: true, teacher });
@@ -116,28 +131,47 @@ export async function PUT(req: NextRequest) {
     await connectToDatabase();
 
     const body = await req.json();
-    const { id, name, phone, type, subjectName, grades, roomId, teacherPercentage, academyPercentage, balance } = body;
+    const { id, name, phone, type, subjectName, grades, roomId, teacherPercentage, academyPercentage } = body;
 
-    if (!id) {
-      return NextResponse.json({ error: 'معرف المدرس/المدرب مطلوب' }, { status: 400 });
+    if (!id || !isValidObjectId(id)) {
+      return NextResponse.json({ error: 'معرف المدرس/المدرب غير صحيح' }, { status: 400 });
     }
+
+    const cleanName = sanitizeString(name, 200);
+    const cleanPhone = sanitizeString(phone, 20);
+    const cleanSubject = sanitizeString(subjectName, 200);
+
+    if (!cleanName || !cleanPhone || !cleanSubject) {
+      return NextResponse.json({ error: 'الاسم والهاتف والمادة مطلوبة' }, { status: 400 });
+    }
+
+    const validType = type === 'trainer' ? 'trainer' : 'teacher';
+    const validRoomId = roomId && isValidObjectId(roomId) ? roomId : undefined;
+    const tPct = sanitizePercentage(teacherPercentage, 50);
+    const aPct = 100 - tPct;
+    const cleanGrades = Array.isArray(grades)
+      ? grades.map((g: unknown) => sanitizeString(g, 100)).filter(Boolean).slice(0, 20)
+      : [];
 
     const updated = await Teacher.findByIdAndUpdate(
       id,
       {
-        name: name?.trim(),
-        phone: phone?.trim(),
-        type: type === 'trainer' ? 'trainer' : 'teacher',
-        subjectName: subjectName?.trim(),
-        grades: grades || [],
-        room: roomId || undefined,
-        teacherPercentage: Number(teacherPercentage) ?? 50,
-        academyPercentage: Number(academyPercentage) ?? 50,
-        // NOTE: balance is intentionally NOT updated here.
-        // Balance only changes via /api/payments (student pays) or /api/expenses (teacher loan).
+        name: cleanName,
+        phone: cleanPhone,
+        type: validType,
+        subjectName: cleanSubject,
+        grades: cleanGrades,
+        room: validRoomId,
+        teacherPercentage: tPct,
+        academyPercentage: aPct,
+        // NOTE: balance is NOT updated here. Changes via /api/payments or /api/expenses only.
       },
       { new: true }
     );
+
+    if (!updated) {
+      return NextResponse.json({ error: 'المدرس/المدرب غير موجود' }, { status: 404 });
+    }
 
     return NextResponse.json({ success: true, teacher: updated });
   } catch (error: any) {
@@ -156,8 +190,13 @@ export async function DELETE(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
 
-    if (!id) {
-      return NextResponse.json({ error: 'معرف المدرس مطلوب' }, { status: 400 });
+    if (!id || !isValidObjectId(id)) {
+      return NextResponse.json({ error: 'معرف المدرس غير صحيح' }, { status: 400 });
+    }
+
+    const teacher = await Teacher.findById(id);
+    if (!teacher) {
+      return NextResponse.json({ error: 'المدرس/المدرب غير موجود' }, { status: 404 });
     }
 
     await Teacher.findByIdAndDelete(id);

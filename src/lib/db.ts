@@ -34,8 +34,15 @@ export async function connectToDatabase(): Promise<typeof mongoose> {
   if (!cached!.promise) {
     const opts = {
       bufferCommands: false,
-      serverSelectionTimeoutMS: 5000, // Timeout after 5 seconds if connection fails
+      serverSelectionTimeoutMS: 8000,
       socketTimeoutMS: 45000,
+      connectTimeoutMS: 10000,
+      // Connection pooling for performance
+      maxPoolSize: 10,
+      minPoolSize: 2,
+      maxIdleTimeMS: 30000,
+      // Compression for faster data transfer
+      compressors: ['zlib'] as ('zlib' | 'zstd' | 'snappy')[],
     };
 
     cached!.promise = mongoose.connect(MONGODB_URI as string, opts).then((mongooseInstance) => {

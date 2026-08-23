@@ -3,8 +3,11 @@ import { connectToDatabase } from '@/lib/db';
 import Expense from '@/models/Expense';
 import Teacher from '@/models/Teacher';
 import { getCurrentUser } from '@/lib/auth';
+import { sanitizeString, isValidObjectId, sanitizeNumber, isValidDate, isValidEnum } from '@/lib/validate';
 
 export const dynamic = 'force-dynamic';
+
+const VALID_EXPENSE_TYPES = ['teacher_loan', 'general'] as const;
 
 async function getExpenseStats() {
   const today = new Date().toISOString().substring(0, 10);
@@ -46,15 +49,19 @@ export async function GET(req: NextRequest) {
     const date = searchParams.get('date');
     const month = searchParams.get('month');
 
-    let query: Record<string, unknown> = {};
-    if (date) {
+    const query: Record<string, unknown> = {};
+    if (date && isValidDate(date)) {
       query.date = date;
-    } else if (month) {
+    } else if (month && /^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
       query.date = { $regex: `^${month}` };
     }
 
     const [expenses, stats] = await Promise.all([
-      Expense.find(query).populate('createdBy', 'name').populate('teacher', 'name type subjectName').sort({ date: -1, createdAt: -1 }),
+      Expense.find(query)
+        .populate('createdBy', 'name')
+        .populate('teacher', 'name type subjectName')
+        .sort({ date: -1, createdAt: -1 })
+        .lean(),
       getExpenseStats(),
     ]);
 
@@ -76,33 +83,40 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { amount, date, reason, type, teacherId } = body;
 
-    if (!amount || amount <= 0) {
+    const cleanAmount = sanitizeNumber(amount, 0, 10_000_000);
+    const cleanReason = sanitizeString(reason, 500);
+    const cleanType = isValidEnum(type, VALID_EXPENSE_TYPES) ? type : 'general';
+    const cleanTeacherId = teacherId && isValidObjectId(teacherId) ? teacherId : undefined;
+
+    if (cleanAmount <= 0) {
       return NextResponse.json({ error: 'المبلغ مطلوب ويجب أن يكون أكبر من صفر' }, { status: 400 });
     }
-    if (!date) {
-      return NextResponse.json({ error: 'التاريخ مطلوب' }, { status: 400 });
+    if (!date || !isValidDate(date)) {
+      return NextResponse.json({ error: 'التاريخ مطلوب بصيغة YYYY-MM-DD' }, { status: 400 });
     }
-    if (!reason?.trim()) {
+    if (!cleanReason) {
       return NextResponse.json({ error: 'السبب مطلوب' }, { status: 400 });
+    }
+    // Teacher loan requires a teacherId
+    if (cleanType === 'teacher_loan' && !cleanTeacherId) {
+      return NextResponse.json({ error: 'يجب تحديد المدرس/المدرب عند تسجيل سلفة' }, { status: 400 });
     }
 
     const expense = await Expense.create({
-      amount: Number(amount),
+      amount: cleanAmount,
       date,
-      reason: reason.trim(),
-      type: type === 'teacher_loan' ? 'teacher_loan' : 'general',
-      teacher: teacherId || undefined,
+      reason: cleanReason,
+      type: cleanType,
+      teacher: cleanTeacherId,
       createdBy: currentUser._id,
     });
 
-    // If teacher loan, update teacher balance (subtract from teacher balance since they borrowed)
-    if (type === 'teacher_loan' && teacherId) {
-      await Teacher.findByIdAndUpdate(teacherId, {
-        $inc: { balance: -Number(amount) },
+    // If teacher loan, subtract from teacher balance (they borrowed money)
+    if (cleanType === 'teacher_loan' && cleanTeacherId) {
+      await Teacher.findByIdAndUpdate(cleanTeacherId, {
+        $inc: { balance: -cleanAmount },
       });
     }
-
-    // Removed notification
 
     return NextResponse.json({ success: true, expense });
   } catch (error: unknown) {
@@ -121,15 +135,21 @@ export async function DELETE(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const expenseId = searchParams.get('id');
-    if (!expenseId) {
-      return NextResponse.json({ error: 'معرف المصروف مطلوب' }, { status: 400 });
+
+    if (!expenseId || !isValidObjectId(expenseId)) {
+      return NextResponse.json({ error: 'معرف المصروف غير صحيح' }, { status: 400 });
     }
 
-    const expense = await Expense.findById(expenseId);
-    if (expense && expense.type === 'teacher_loan' && expense.teacher) {
-      // Reverse balance change if deleted
-      await Teacher.findByIdAndUpdate(expense.teacher, {
-        $inc: { balance: Number(expense.amount) },
+    const expense = await Expense.findById(expenseId).lean();
+    if (!expense) {
+      return NextResponse.json({ error: 'المصروف غير موجود' }, { status: 404 });
+    }
+
+    const e = expense as any;
+    // Reverse teacher balance if this was a loan
+    if (e.type === 'teacher_loan' && e.teacher) {
+      await Teacher.findByIdAndUpdate(e.teacher, {
+        $inc: { balance: e.amount },
       });
     }
 

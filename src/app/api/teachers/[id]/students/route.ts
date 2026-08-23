@@ -5,6 +5,7 @@ import Teacher from '@/models/Teacher';
 import Payment from '@/models/Payment';
 import Attendance from '@/models/Attendance';
 import { getCurrentUser } from '@/lib/auth';
+import { isValidObjectId } from '@/lib/validate';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,30 +21,42 @@ export async function GET(
     await connectToDatabase();
 
     const { id: teacherId } = await params;
+
+    if (!isValidObjectId(teacherId)) {
+      return NextResponse.json({ error: 'معرف المدرس غير صحيح' }, { status: 400 });
+    }
+
     const currentMonth = new Date().toISOString().substring(0, 7);
 
-    const teacher = await Teacher.findById(teacherId);
-    const teacherName = teacher?.name || 'غير محدد';
-    const students = await Student.find({ teacher: teacherId }).sort({ createdAt: -1 });
+    const [teacher, students] = await Promise.all([
+      Teacher.findById(teacherId).lean(),
+      Student.find({ teacher: teacherId }).sort({ createdAt: -1 }).lean(),
+    ]);
+
+    if (!teacher) {
+      return NextResponse.json({ error: 'المدرس/المدرب غير موجود' }, { status: 404 });
+    }
+
+    const teacherName = (teacher as any).name || 'غير محدد';
 
     const studentList = await Promise.all(
       students.map(async (st) => {
         const [payments, attendances] = await Promise.all([
-          Payment.find({ student: st._id }).sort({ createdAt: -1 }),
-          Attendance.find({ student: st._id }).sort({ date: -1 }),
+          Payment.find({ student: st._id }).sort({ createdAt: -1 }).lean(),
+          Attendance.find({ student: st._id }).sort({ date: -1 }).lean(),
         ]);
 
-        const currentPayment = payments.find((p) => p.month === currentMonth);
+        const currentPayment = payments.find((p: any) => p.month === currentMonth);
         const totalPaid = payments
-          .filter((p) => p.status === 'paid' || p.status === 'partial')
-          .reduce((sum, p) => sum + p.amount, 0);
-        const totalRemaining = payments.reduce((sum, p) => sum + (p.remainingAmount || 0), 0);
+          .filter((p: any) => p.status === 'paid' || p.status === 'partial')
+          .reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
+        const totalRemaining = payments.reduce((sum: number, p: any) => sum + (p.remainingAmount || 0), 0);
 
-        const presentCount = attendances.filter((a) => a.status === 'present').length;
-        const absentCount = attendances.filter((a) => a.status === 'absent').length;
-        const excusedCount = attendances.filter((a) => a.status === 'excused').length;
+        const presentCount = attendances.filter((a: any) => a.status === 'present').length;
+        const absentCount = attendances.filter((a: any) => a.status === 'absent').length;
+        const excusedCount = attendances.filter((a: any) => a.status === 'excused').length;
 
-        const attendanceHistory = attendances.map((a) => ({
+        const attendanceHistory = attendances.map((a: any) => ({
           id: a._id.toString(),
           date: a.date,
           status: a.status,
@@ -52,7 +65,7 @@ export async function GET(
         }));
 
         return {
-          id: st._id.toString(),
+          id: (st._id as any).toString(),
           name: st.name,
           phone: st.phone,
           parentPhone: st.parentPhone,
@@ -64,12 +77,12 @@ export async function GET(
           notes: st.notes || '',
           grades: st.grades || [],
           type: st.type || 'student',
-          paymentStatus: currentPayment?.status || 'unpaid',
-          paymentAmount: currentPayment?.amount || 0,
-          paymentType: currentPayment?.paymentType || 'monthly',
-          paymentReason: currentPayment?.paymentReason || '',
-          remainingAmount: currentPayment?.remainingAmount || 0,
-          remainingReason: currentPayment?.remainingReason || '',
+          paymentStatus: (currentPayment as any)?.status || 'unpaid',
+          paymentAmount: (currentPayment as any)?.amount || 0,
+          paymentType: (currentPayment as any)?.paymentType || 'monthly',
+          paymentReason: (currentPayment as any)?.paymentReason || '',
+          remainingAmount: (currentPayment as any)?.remainingAmount || 0,
+          remainingReason: (currentPayment as any)?.remainingReason || '',
           totalPaid,
           totalRemaining,
           totalAttendance: attendances.length,
@@ -77,8 +90,8 @@ export async function GET(
           absentCount,
           excusedCount,
           attendanceHistory,
-          paidAt: currentPayment?.paidAt || null,
-          payments: payments.map((p) => ({
+          paidAt: (currentPayment as any)?.paidAt || null,
+          payments: payments.map((p: any) => ({
             id: p._id.toString(),
             month: p.month,
             amount: p.amount,

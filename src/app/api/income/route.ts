@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db';
 import Income from '@/models/Income';
 import { getCurrentUser } from '@/lib/auth';
+import { sanitizeString, isValidObjectId, sanitizeNumber, isValidDate } from '@/lib/validate';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,16 +18,17 @@ export async function GET(req: NextRequest) {
     const date = searchParams.get('date');
     const month = searchParams.get('month');
 
-    let query: Record<string, unknown> = {};
-    if (date) {
+    const query: Record<string, unknown> = {};
+    if (date && isValidDate(date)) {
       query.date = date;
-    } else if (month) {
+    } else if (month && /^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
       query.date = { $regex: `^${month}` };
     }
 
     const incomes = await Income.find(query)
       .populate('createdBy', 'name')
-      .sort({ date: -1, createdAt: -1 });
+      .sort({ date: -1, createdAt: -1 })
+      .lean();
 
     // Stats
     const today = new Date().toISOString().substring(0, 10);
@@ -72,35 +74,39 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { amount, date, reason, subscriberName, staffType, teacherId } = body;
 
-    if (!amount || amount <= 0) {
+    const cleanAmount = sanitizeNumber(amount, 0, 10_000_000);
+    const cleanReason = sanitizeString(reason, 500);
+    const cleanSubscriberName = sanitizeString(subscriberName, 200);
+    const cleanStaffType = staffType === 'trainer' || staffType === 'teacher' ? staffType : undefined;
+    const cleanTeacherId = teacherId && isValidObjectId(teacherId) ? teacherId : undefined;
+
+    if (cleanAmount <= 0) {
       return NextResponse.json({ error: 'المبلغ مطلوب ويجب أن يكون أكبر من صفر' }, { status: 400 });
     }
-    if (!date) {
-      return NextResponse.json({ error: 'التاريخ مطلوب' }, { status: 400 });
+    if (!date || !isValidDate(date)) {
+      return NextResponse.json({ error: 'التاريخ مطلوب ويجب أن يكون بصيغة YYYY-MM-DD' }, { status: 400 });
     }
-    if (!reason?.trim()) {
+    if (!cleanReason) {
       return NextResponse.json({ error: 'السبب مطلوب' }, { status: 400 });
     }
 
     const income = await Income.create({
-      amount: Number(amount),
+      amount: cleanAmount,
       date,
-      reason: reason.trim(),
-      subscriberName: subscriberName?.trim(),
-      staffType,
-      teacher: teacherId || undefined,
+      reason: cleanReason,
+      subscriberName: cleanSubscriberName || undefined,
+      staffType: cleanStaffType,
+      teacher: cleanTeacherId,
       createdBy: currentUser._id,
     });
 
     // Update teacher balance if applicable
-    if (teacherId) {
+    if (cleanTeacherId) {
       const Teacher = (await import('@/models/Teacher')).default;
-      const teacher = await Teacher.findById(teacherId);
+      const teacher = await Teacher.findById(cleanTeacherId).lean();
       if (teacher) {
-        const teacherCut = (Number(amount) * (teacher.teacherPercentage || 50)) / 100;
-        await Teacher.findByIdAndUpdate(teacherId, {
-          $inc: { balance: teacherCut },
-        });
+        const teacherCut = (cleanAmount * ((teacher as any).teacherPercentage || 50)) / 100;
+        await Teacher.findByIdAndUpdate(cleanTeacherId, { $inc: { balance: teacherCut } });
       }
     }
 
@@ -121,24 +127,24 @@ export async function DELETE(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
-    if (!id) {
-      return NextResponse.json({ error: 'معرف الدخل مطلوب' }, { status: 400 });
+
+    if (!id || !isValidObjectId(id)) {
+      return NextResponse.json({ error: 'معرف الدخل غير صحيح' }, { status: 400 });
     }
 
-    const income = await Income.findById(id);
+    const income = await Income.findById(id).lean();
     if (!income) {
       return NextResponse.json({ error: 'الدخل غير موجود' }, { status: 404 });
     }
 
+    const inc = income as any;
     // Revert teacher balance if applicable
-    if (income.teacher) {
+    if (inc.teacher) {
       const Teacher = (await import('@/models/Teacher')).default;
-      const teacher = await Teacher.findById(income.teacher);
+      const teacher = await Teacher.findById(inc.teacher).lean();
       if (teacher) {
-        const teacherCut = (income.amount * (teacher.teacherPercentage || 50)) / 100;
-        await Teacher.findByIdAndUpdate(income.teacher, {
-          $inc: { balance: -teacherCut },
-        });
+        const teacherCut = (inc.amount * ((teacher as any).teacherPercentage || 50)) / 100;
+        await Teacher.findByIdAndUpdate(inc.teacher, { $inc: { balance: -teacherCut } });
       }
     }
 

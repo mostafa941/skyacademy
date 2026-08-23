@@ -73,7 +73,11 @@ const PaymentSchema = new Schema<IPayment>(
   }
 );
 
-PaymentSchema.index({ student: 1, month: 1 });
+// Compound unique: one payment per student per month
+PaymentSchema.index({ student: 1, month: 1 }, { unique: true });
+PaymentSchema.index({ teacher: 1, month: 1 });
+PaymentSchema.index({ status: 1 });
+PaymentSchema.index({ month: 1 });
 
 const Payment: Model<IPayment> =
   mongoose.models.Payment || mongoose.model<IPayment>('Payment', PaymentSchema);
