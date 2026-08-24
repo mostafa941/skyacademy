@@ -16,6 +16,8 @@ const UsersSection = dynamic(() => import('./sections/UsersSection'), { ssr: fal
 const SettlementsSection = dynamic(() => import('./sections/SettlementsSection'), { ssr: false });
 const NotificationsSection = dynamic(() => import('./sections/NotificationsSection'), { ssr: false });
 const DailyMonitorSection = dynamic(() => import('./sections/DailyMonitorSection'), { ssr: false });
+const LatePaymentsSection = dynamic(() => import('./sections/LatePaymentsSection'), { ssr: false });
+const RentalTeachersSection = dynamic(() => import('./sections/RentalTeachersSection'), { ssr: false });
 
 interface User {
   id: string;
@@ -40,6 +42,8 @@ const navItems: NavItem[] = [
   { id: 'income', label: 'الدخل', icon: '💵' },
   { id: 'expenses', label: 'الخرج', icon: '📤' },
   { id: 'settlements', label: 'التصفيات', icon: '⚖️' },
+  { id: 'late_payments', label: 'دفع متأخر', icon: '🕐' },
+  { id: 'rental_teachers', label: 'مدرسين بالإيجار', icon: '🏢' },
   { id: 'notes', label: 'الملاحظات', icon: '📝' },
   { id: 'paid_students', label: 'سجل المسددين', icon: '🟢' },
   { id: 'partial_students', label: 'عليهم مبالغ متبقية', icon: '🟡' },
@@ -48,51 +52,25 @@ const navItems: NavItem[] = [
   { id: 'daily_monitor', label: 'متابعة الجلسات', icon: '📋' },
 ];
 
-export default function DashboardLayout({ role }: { children?: React.ReactNode; role: 'admin' | 'secretary' }) {
+export default function DashboardLayout({
+  role,
+  initialUser,
+}: {
+  children?: React.ReactNode;
+  role: 'admin' | 'secretary';
+  initialUser: User;
+}) {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User>(initialUser);
   const [activeSection, setActiveSection] = useState('overview');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
-
-  useEffect(() => {
-    async function fetchUser() {
-      try {
-        const res = await fetch('/api/auth/me');
-        if (!res.ok) {
-          router.replace('/');
-          return;
-        }
-        const data = await res.json();
-        if (!data.authenticated || data.user.role !== role) {
-          router.replace('/');
-          return;
-        }
-        setUser(data.user);
-      } catch {
-        router.replace('/');
-      }
-    }
-    
-    fetchUser();
-  }, [role, router]);
 
   const handleLogout = async () => {
     setLoggingOut(true);
     await fetch('/api/auth/logout', { method: 'POST' });
     router.replace('/');
   };
-
-  if (!user) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div className="spinner" style={{ width: 44, height: 44, margin: '0 auto 16px' }} />
-          <p style={{ color: 'var(--text-secondary)' }}>جاري فتح لوحة التحكم...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div style={{ minHeight: '100vh', direction: 'rtl', background: 'var(--bg-dark)' }}>
@@ -201,6 +179,8 @@ export default function DashboardLayout({ role }: { children?: React.ReactNode; 
           {activeSection === 'income' && <IncomeSection />}
           {activeSection === 'expenses' && <ExpensesSection userRole={user.role} />}
           {activeSection === 'settlements' && <SettlementsSection />}
+          {activeSection === 'late_payments' && <LatePaymentsSection />}
+          {activeSection === 'rental_teachers' && <RentalTeachersSection />}
           {activeSection === 'notes' && <NotesSection />}
           {activeSection === 'paid_students' && <StudentsPaymentStatusSection paymentStatus="paid" />}
           {activeSection === 'partial_students' && <StudentsPaymentStatusSection paymentStatus="partial" />}

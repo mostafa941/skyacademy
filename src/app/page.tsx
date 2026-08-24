@@ -151,16 +151,7 @@ export default function LandingPage() {
     }
   };
 
-  if (checkingSession) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div className="spinner" style={{ width: 44, height: 44, margin: '0 auto 16px' }} />
-          <p style={{ color: 'var(--text-secondary)' }}>جاري التحقق من الجلسة...</p>
-        </div>
-      </div>
-    );
-  }
+
 
   return (
     <main className="bg-grid" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px 16px' }}>

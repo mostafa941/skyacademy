@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { NextRequest } from 'next/server';
+import { cookies } from 'next/headers';
 import { connectToDatabase } from './db';
 import User, { UserRole } from '@/models/User';
 
@@ -48,6 +49,25 @@ export async function getCurrentUser(req: NextRequest) {
   await connectToDatabase();
   const user = await User.findById(payload.userId).select('-password');
   return user;
+}
+
+export async function getCurrentUserServer() {
+  const cookieStore = await cookies();
+  const cookieToken = cookieStore.get(TOKEN_COOKIE_NAME)?.value;
+  if (!cookieToken) return null;
+
+  const payload = verifyToken(cookieToken);
+  if (!payload) return null;
+
+  await connectToDatabase();
+  const user = await User.findById(payload.userId).select('-password').lean();
+  if (!user) return null;
+
+  // Serialize MongoDB ObjectId
+  return {
+    ...user,
+    _id: user._id.toString(),
+  };
 }
 
 /**
