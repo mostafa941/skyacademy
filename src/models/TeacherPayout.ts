@@ -22,7 +22,6 @@ const TeacherPayoutSchema = new Schema<ITeacherPayout>(
     amount: {
       type: Number,
       required: true,
-      min: 0,
     },
     month: {
       type: String,

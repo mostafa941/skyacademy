@@ -102,12 +102,10 @@ export default function SettlementsSection() {
 
   const handleSettle = async () => {
     if (!selectedTeacher || !selectedMonth || !settlementData) return;
-    if (settlementData.teacher.balance <= 0) {
-      showToast('لا يوجد رصيد لتصفيته', 'error');
-      return;
-    }
+    
+    // We removed the balance <= 0 check to allow all types of settlements.
 
-    if (!confirm(`هل أنت متأكد من تصفية حساب ${settlementData.teacher.name} ودفع مبلغ ${settlementData.teacher.balance.toFixed(2)} ج.م؟`)) return;
+    if (!confirm(`هل أنت متأكد من تصفية حساب ${settlementData.teacher.name}؟ (الرصيد الحالي: ${Number(settlementData.teacher.balance).toFixed(2)} ج.م)`)) return;
 
     setSettling(true);
     try {
@@ -313,11 +311,14 @@ export default function SettlementsSection() {
               </p>
               <button
                 className="btn btn-primary"
-                style={{ width: '100%', maxWidth: 220 }}
-                disabled={settlementData.teacher.balance <= 0 || settling}
+                style={{ width: '100%', maxWidth: 260 }}
+                disabled={settling}
                 onClick={handleSettle}
               >
-                {settling ? '⏳ بنصفي الحساب...' : '✅ تصفية الحساب (دفع للمدرس)'}
+                {settling ? '⏳ بنصفي الحساب...' : 
+                 settlementData.teacher.balance > 0 ? '✅ تصفية الحساب (دفع للمدرس)' :
+                 settlementData.teacher.balance < 0 ? '✅ تصفية الحساب (تحصيل من المدرس)' :
+                 '✅ تصفية الحساب (تقفيل الشهر)'}
               </button>
             </div>
           </div>

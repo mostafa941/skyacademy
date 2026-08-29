@@ -85,9 +85,6 @@ export async function seedDefaultUsersIfNeeded() {
       role: 'admin',
     });
     console.log('Default Admin user created: admin@sky.com / admin1234');
-  } else if (existingAdmin.password !== 'admin1234') {
-    existingAdmin.password = 'admin1234';
-    await existingAdmin.save();
   }
 
   const existingSecretary = await User.findOne({ email: 'secretary@sky.com' });
@@ -100,8 +97,5 @@ export async function seedDefaultUsersIfNeeded() {
       role: 'secretary',
     });
     console.log('Default Secretary user created: secretary@sky.com / sec1234');
-  } else if (existingSecretary.password !== 'sec1234') {
-    existingSecretary.password = 'sec1234';
-    await existingSecretary.save();
   }
 }

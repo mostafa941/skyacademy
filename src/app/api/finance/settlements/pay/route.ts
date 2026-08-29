@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db';
 import Teacher from '@/models/Teacher';
 import TeacherPayout from '@/models/TeacherPayout';
+import Income from '@/models/Income';
 import { getCurrentUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -26,27 +27,39 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'المدرس غير موجود' }, { status: 404 });
     }
 
-    if (teacher.balance <= 0) {
-      return NextResponse.json({ error: 'لا يوجد رصيد مستحق لتصفيته' }, { status: 400 });
-    }
+    // Allow settlement regardless of balance to close the month
 
     const amountToPayout = teacher.balance;
 
-    // Create a Payout record
-    const payout = await TeacherPayout.create({
-      teacher: teacherId,
-      amount: amountToPayout,
-      month: month,
-      date: new Date().toISOString().substring(0, 10),
-      notes: `تصفية حساب شهر ${month}`,
-      createdBy: currentUser._id,
-    });
+    // Handle financial records based on balance
+    if (amountToPayout > 0) {
+      // Create a Payout record (Center pays Teacher)
+      await TeacherPayout.create({
+        teacher: teacherId,
+        amount: amountToPayout,
+        month: month,
+        date: new Date().toISOString().substring(0, 10),
+        notes: `تصفية حساب شهر ${month}`,
+        createdBy: currentUser._id,
+      });
+    } else if (amountToPayout < 0) {
+      // Teacher pays the Center to clear their debt
+      await Income.create({
+        amount: Math.abs(amountToPayout),
+        date: new Date().toISOString().substring(0, 10),
+        reason: `تسوية وتصفية عجز حساب شهر ${month} (استرداد من المدرس)`,
+        staffType: teacher.type,
+        teacher: teacherId,
+        createdBy: currentUser._id,
+      });
+    }
+    // If amountToPayout === 0, no financial record needed, just reset balance.
 
     // Reset teacher balance
     teacher.balance = 0;
     await teacher.save();
 
-    return NextResponse.json({ success: true, payout, message: 'تمت تصفية الحساب بنجاح' });
+    return NextResponse.json({ success: true, message: 'تمت تصفية الحساب بنجاح' });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

@@ -87,6 +87,12 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
   const [showLoanModal, setShowLoanModal] = useState(false);
   const [showPdf, setShowPdf] = useState(false);
 
+  // Close Month Modal
+  const [showCloseMonthModal, setShowCloseMonthModal] = useState(false);
+  const [closeMonthTarget, setCloseMonthTarget] = useState(new Date().toISOString().substring(0, 7));
+  const [closingMonth, setClosingMonth] = useState(false);
+  const [closeMonthResult, setCloseMonthResult] = useState<{ paidStudents: any[]; unpaidStudents: any[]; nextMonth: string; deletedAttendance: number } | null>(null);
+
   // Student Payment Modal (Inside Teacher Profile)
   const [showPayModal, setShowPayModal] = useState(false);
   const [selectedStudentForPay, setSelectedStudentForPay] = useState<any>(null);
@@ -372,6 +378,37 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
     }
   };
 
+  const handleCloseMonth = async () => {
+    if (!selectedStaff || !closeMonthTarget) return;
+    setClosingMonth(true);
+    try {
+      const res = await fetch(`/api/teachers/${selectedStaff.id}/close-month`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month: closeMonthTarget }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setCloseMonthResult({
+          paidStudents: data.paidStudents || [],
+          unpaidStudents: data.unpaidStudents || [],
+          nextMonth: data.nextMonth || '',
+          deletedAttendance: data.deletedAttendance || 0,
+        });
+        loadTeacherStudents(selectedStaff.id);
+        refreshList();
+      } else {
+        showToast(data.error || 'حدث خطأ أثناء إغلاق الشهر', 'error');
+        setShowCloseMonthModal(false);
+      }
+    } catch {
+      showToast('خطأ في الاتصال بالخادم', 'error');
+      setShowCloseMonthModal(false);
+    } finally {
+      setClosingMonth(false);
+    }
+  };
+
   const handleSaveStudentPayment = async () => {
     if (!selectedStudentForPay || !selectedStaff) return;
     try {
@@ -653,6 +690,15 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
                 {isAdmin && <button className="btn btn-secondary" onClick={() => setShowLoanModal(true)}>💸 إضافة سلفة</button>}
                 {isAdmin && selectedStaff?.balance < 0 && (
                   <button className="btn btn-ghost" style={{ color: 'var(--accent-orange)' }} onClick={handleResetLoan}>💸 إزالة السلفة</button>
+                )}
+                {isAdmin && (
+                  <button
+                    className="btn btn-primary"
+                    style={{ background: 'var(--accent-orange)', borderColor: 'var(--accent-orange)' }}
+                    onClick={() => { setCloseMonthResult(null); setShowCloseMonthModal(true); }}
+                  >
+                    📅 إغلاق الشهر
+                  </button>
                 )}
                 <button className="btn btn-secondary" onClick={() => setShowPdf(true)}>📄 تصدير PDF</button>
                 <button className="btn btn-secondary" onClick={() => {
@@ -1888,6 +1934,133 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
               >
                 حفظ الحضور
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============ Close Month Modal ============ */}
+      {showCloseMonthModal && selectedStaff && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
+          zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: 600, maxHeight: '90vh', overflowY: 'auto', padding: 0 }}>
+            {/* Header */}
+            <div style={{
+              padding: '18px 20px', borderBottom: '1px solid var(--border)',
+              background: closeMonthResult ? 'var(--success-muted)' : 'var(--accent-orange-muted)',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <h3 style={{ fontSize: 17, fontWeight: 800, color: closeMonthResult ? 'var(--success)' : 'var(--accent-orange)' }}>
+                {closeMonthResult ? '✅ تم إغلاق الشهر بنجاح' : `📅 إغلاق شهر — ${selectedStaff.name}`}
+              </h3>
+              <button
+                onClick={() => { setShowCloseMonthModal(false); setCloseMonthResult(null); }}
+                style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: 'var(--text-muted)', lineHeight: 1 }}
+              >✕</button>
+            </div>
+
+            <div style={{ padding: 20 }}>
+              {!closeMonthResult ? (
+                /* Confirmation Screen */
+                <>
+                  <div style={{ marginBottom: 20, padding: 16, background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', border: '1px solid var(--accent-orange-border)' }}>
+                    <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 12, lineHeight: 1.7 }}>
+                      ⚠️ <strong>إغلاق الشهر سيقوم بالتالي:</strong>
+                    </p>
+                    <ul style={{ fontSize: 13, color: 'var(--text-secondary)', paddingRight: 20, lineHeight: 2 }}>
+                      <li>✅ حذف جميع سجلات الحضور والغياب للشهر المختار</li>
+                      <li>✅ تصفير رصيد الـ {staffType === 'teacher' ? 'مدرس' : 'مدرب'} (balance = 0)</li>
+                      <li>✅ إنشاء سجلات دفع جديدة (غير مدفوعة) للشهر القادم</li>
+                      <li>✅ الطلاب يبقون مسجلين عنده — لا يُحذف أي طالب</li>
+                    </ul>
+                  </div>
+
+                  <div className="input-group" style={{ marginBottom: 20 }}>
+                    <label className="input-label">الشهر المراد إغلاقه</label>
+                    <input
+                      type="month"
+                      className="input"
+                      value={closeMonthTarget}
+                      onChange={e => setCloseMonthTarget(e.target.value)}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <button
+                      className="btn btn-primary"
+                      style={{ flex: 1, background: 'var(--accent-orange)', borderColor: 'var(--accent-orange)' }}
+                      onClick={handleCloseMonth}
+                      disabled={closingMonth}
+                    >
+                      {closingMonth ? '⏳ جاري الإغلاق...' : '📅 تأكيد إغلاق الشهر'}
+                    </button>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ flex: 1 }}
+                      onClick={() => setShowCloseMonthModal(false)}
+                      disabled={closingMonth}
+                    >
+                      إلغاء
+                    </button>
+                  </div>
+                </>
+              ) : (
+                /* Result Screen */
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+                    <div style={{ padding: 16, background: 'var(--success-muted)', borderRadius: 'var(--radius-md)', textAlign: 'center' }}>
+                      <div style={{ fontSize: 28, fontWeight: 900, color: 'var(--success)' }}>{closeMonthResult.paidStudents.length}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>دفعوا ✅</div>
+                    </div>
+                    <div style={{ padding: 16, background: 'var(--error-muted)', borderRadius: 'var(--radius-md)', textAlign: 'center' }}>
+                      <div style={{ fontSize: 28, fontWeight: 900, color: 'var(--error)' }}>{closeMonthResult.unpaidStudents.length}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>لم يدفعوا ❌</div>
+                    </div>
+                  </div>
+
+                  {closeMonthResult.paidStudents.length > 0 && (
+                    <div style={{ marginBottom: 16 }}>
+                      <h4 style={{ fontSize: 14, fontWeight: 800, color: 'var(--success)', marginBottom: 8 }}>✅ الطلاب الذين دفعوا:</h4>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {closeMonthResult.paidStudents.map((st: any) => (
+                          <div key={st.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--success-muted)', borderRadius: 'var(--radius-sm)', fontSize: 13 }}>
+                            <span style={{ fontWeight: 700 }}>✅ {st.name}</span>
+                            <span style={{ color: 'var(--success)', fontWeight: 700 }}>{st.amount} ج.م</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {closeMonthResult.unpaidStudents.length > 0 && (
+                    <div style={{ marginBottom: 16 }}>
+                      <h4 style={{ fontSize: 14, fontWeight: 800, color: 'var(--error)', marginBottom: 8 }}>❌ الطلاب الذين لم يدفعوا:</h4>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {closeMonthResult.unpaidStudents.map((st: any) => (
+                          <div key={st.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--error-muted)', borderRadius: 'var(--radius-sm)', fontSize: 13 }}>
+                            <span style={{ fontWeight: 700 }}>❌ {st.name}</span>
+                            <span style={{ color: 'var(--error)', fontWeight: 700 }}>مديون {st.monthlyFee} ج.م</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ padding: 12, background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
+                    🗓️ الشهر القادم: <strong>{closeMonthResult.nextMonth}</strong> — تم إنشاء سجلات دفع جديدة لكل الطلاب تلقائياً
+                  </div>
+
+                  <button
+                    className="btn btn-primary"
+                    style={{ width: '100%' }}
+                    onClick={() => { setShowCloseMonthModal(false); setCloseMonthResult(null); }}
+                  >
+                    حسناً ✅
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
