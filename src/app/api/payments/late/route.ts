@@ -7,9 +7,10 @@ export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/payments/late
- * Returns payments that were registered AFTER the month they belong to ended.
- * A payment is "late" if paidAt (or createdAt) is in a month AFTER the payment's `month` field.
- * 
+ * Returns two types of "late" payments:
+ * 1. Payments that were paid AFTER the month they belong to ended (paid late)
+ * 2. Payments that are still UNPAID for past months (overdue — shown after month close)
+ *
  * Optional query param: teacherId — filter by a specific teacher
  */
 export async function GET(req: NextRequest) {
@@ -22,49 +23,62 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const teacherId = searchParams.get('teacherId');
 
-    // Fetch all non-unpaid payments that have a paidAt or createdAt date
-    const query: Record<string, unknown> = {
+    const currentMonth = new Date().toISOString().substring(0, 7); // e.g. "2026-09"
+
+    // === TYPE 1: Paid-late payments (paid after the month ended) ===
+    const paidQuery: Record<string, unknown> = {
       status: { $in: ['paid', 'partial'] },
     };
-    if (teacherId) query.teacher = teacherId;
+    if (teacherId) paidQuery.teacher = teacherId;
 
-    const payments = await Payment.find(query)
-      .populate('student', 'name phone parentPhone grade subjectName teacherId type')
+    const paidPayments = await Payment.find(paidQuery)
+      .populate('student', 'name phone parentPhone grade subjectName teacherId type monthlyFee')
       .populate('teacher', 'name subjectName type')
       .sort({ paidAt: -1, createdAt: -1 })
       .lean();
 
-    // Filter: payment is "late" if the actual payment date is AFTER the month it belongs to
-    const latePayments = payments.filter((p: any) => {
-      const paymentMonth = p.month; // e.g. "2026-08"
+    // Filter: payment is "late" if actual pay date is AFTER the month it belongs to
+    const paidLatePayments = paidPayments.filter((p: any) => {
+      const paymentMonth = p.month;
       const actualPayDate = p.paidAt || p.createdAt;
       if (!paymentMonth || !actualPayDate) return false;
 
-      // Convert payment month to the last day of that month
       const [year, month] = paymentMonth.split('-').map(Number);
-      const lastDayOfMonth = new Date(year, month, 0); // day 0 of next month = last day of this month
+      const lastDayOfMonth = new Date(year, month, 0);
       lastDayOfMonth.setHours(23, 59, 59, 999);
 
-      const payDate = new Date(actualPayDate);
-      return payDate > lastDayOfMonth;
+      return new Date(actualPayDate) > lastDayOfMonth;
     });
 
-    // Shape the response
-    const result = latePayments.map((p: any) => {
+    // === TYPE 2: Overdue unpaid payments (still unpaid from past months) ===
+    const unpaidQuery: Record<string, unknown> = {
+      status: 'unpaid',
+      month: { $lt: currentMonth },
+    };
+    if (teacherId) unpaidQuery.teacher = teacherId;
+
+    const overduePayments = await Payment.find(unpaidQuery)
+      .populate('student', 'name phone parentPhone grade subjectName teacherId type monthlyFee')
+      .populate('teacher', 'name subjectName type')
+      .sort({ month: -1 })
+      .lean();
+
+    // Shape helpers
+    const shapePaidLate = (p: any) => {
       const st = p.student || {};
       const teacher = p.teacher || {};
       const payDate = new Date(p.paidAt || p.createdAt);
 
-      // How many days late?
       const [year, month] = p.month.split('-').map(Number);
       const lastDayOfMonth = new Date(year, month, 0);
       const daysLate = Math.ceil((payDate.getTime() - lastDayOfMonth.getTime()) / (1000 * 60 * 60 * 24));
 
       return {
         paymentId: p._id.toString(),
-        forMonth: p.month, // the month the payment belongs to
-        paidOnDate: payDate.toISOString().substring(0, 10), // actual date paid
-        paidOnMonth: payDate.toISOString().substring(0, 7), // month it was actually paid in
+        lateType: 'paid_late',
+        forMonth: p.month,
+        paidOnDate: payDate.toISOString().substring(0, 10),
+        paidOnMonth: payDate.toISOString().substring(0, 7),
         daysLate,
         amount: p.amount,
         status: p.status,
@@ -85,6 +99,54 @@ export async function GET(req: NextRequest) {
           type: teacher.type || 'teacher',
         },
       };
+    };
+
+    const shapeOverdue = (p: any) => {
+      const st = p.student || {};
+      const teacher = p.teacher || {};
+
+      const [year, month] = p.month.split('-').map(Number);
+      const lastDayOfMonth = new Date(year, month, 0);
+      const today = new Date();
+      const daysLate = Math.max(0, Math.ceil((today.getTime() - lastDayOfMonth.getTime()) / (1000 * 60 * 60 * 24)));
+
+      return {
+        paymentId: p._id.toString(),
+        lateType: 'overdue_unpaid',
+        forMonth: p.month,
+        paidOnDate: null,
+        paidOnMonth: null,
+        daysLate,
+        amount: st.monthlyFee || p.remainingAmount || 0,
+        status: 'unpaid',
+        paymentReason: 'لم يتم السداد بعد',
+        student: {
+          id: st._id?.toString() || '',
+          name: st.name || 'غير معروف',
+          phone: st.phone || '',
+          parentPhone: st.parentPhone || '',
+          grade: st.grade || '',
+          subjectName: st.subjectName || '',
+          type: st.type || 'student',
+        },
+        teacher: {
+          id: teacher._id?.toString() || '',
+          name: teacher.name || 'غير معروف',
+          subjectName: teacher.subjectName || '',
+          type: teacher.type || 'teacher',
+        },
+      };
+    };
+
+    const result = [
+      ...paidLatePayments.map(shapePaidLate),
+      ...overduePayments.map(shapeOverdue),
+    ];
+
+    // Sort: by forMonth desc, then daysLate desc
+    result.sort((a, b) => {
+      if (b.forMonth !== a.forMonth) return b.forMonth.localeCompare(a.forMonth);
+      return b.daysLate - a.daysLate;
     });
 
     return NextResponse.json({ success: true, latePayments: result, total: result.length });

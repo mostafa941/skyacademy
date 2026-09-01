@@ -5,9 +5,10 @@ import { formatWhatsAppPhone } from '@/lib/whatsapp';
 
 interface LatePayment {
   paymentId: string;
+  lateType?: 'paid_late' | 'overdue_unpaid';
   forMonth: string;
-  paidOnDate: string;
-  paidOnMonth: string;
+  paidOnDate: string | null;
+  paidOnMonth: string | null;
   daysLate: number;
   amount: number;
   status: string;
@@ -42,6 +43,7 @@ export default function LatePaymentsSection() {
   const [loading, setLoading] = useState(true);
   const [selectedTeacher, setSelectedTeacher] = useState('');
   const [search, setSearch] = useState('');
+  const [filterType, setFilterType] = useState<'all' | 'paid_late' | 'overdue_unpaid'>('all');
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -73,6 +75,9 @@ export default function LatePaymentsSection() {
   }, [loadData]);
 
   const filtered = latePayments.filter(p => {
+    // Type filter
+    if (filterType !== 'all' && p.lateType !== filterType) return false;
+    // Text search
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return (
@@ -84,10 +89,19 @@ export default function LatePaymentsSection() {
     );
   });
 
+  const overdueCount = latePayments.filter(p => p.lateType === 'overdue_unpaid').length;
+  const paidLateCount = latePayments.filter(p => p.lateType === 'paid_late').length;
+
   const sendWhatsApp = (p: LatePayment) => {
     const phone = formatWhatsAppPhone(p.student.parentPhone || p.student.phone);
     if (!phone) { alert('مفيش رقم هاتف مسجل'); return; }
-    const msg = `🕐 *تذكير متأخر - أكاديمية سكاي*\n━━━━━━━━━━━━━━━━\n🎓 الطالب: ${p.student.name}\n📚 المادة: ${p.student.subjectName}\n👨‍🏫 المدرس: ${p.teacher.name}\n📅 كان المفروض يدفع: شهر ${p.forMonth}\n✅ دفع فعلاً بتاريخ: ${p.paidOnDate}\n⏳ التأخير: ${p.daysLate} يوم\n💰 المبلغ المدفوع: ${p.amount} ج.م\n━━━━━━━━━━━━━━━━\n🌤️ أكاديمية سكاي (Sky Academy)`;
+
+    let msg = '';
+    if (p.lateType === 'overdue_unpaid') {
+      msg = `🚨 *تذكير بسداد المصاريف المتأخرة - أكاديمية سكاي*\n━━━━━━━━━━━━━━━━\n🎓 الطالب: ${p.student.name}\n📚 المادة: ${p.student.subjectName}\n👨‍🏫 المدرس: ${p.teacher.name}\n${p.student.grade ? `🏫 الصف: ${p.student.grade}\n` : ''}📅 الشهر المستحق: ${p.forMonth}\n💰 المبلغ المطلوب: ${p.amount} ج.م\n⏳ تأخير: ${p.daysLate} يوم\n━━━━━━━━━━━━━━━━\n🌤️ أكاديمية سكاي (Sky Academy)\nيسعدنا تسجيل المصاريف في أقرب وقت.`;
+    } else {
+      msg = `🕐 *تذكير متأخر - أكاديمية سكاي*\n━━━━━━━━━━━━━━━━\n🎓 الطالب: ${p.student.name}\n📚 المادة: ${p.student.subjectName}\n👨‍🏫 المدرس: ${p.teacher.name}\n📅 كان المفروض يدفع: شهر ${p.forMonth}\n✅ دفع فعلاً بتاريخ: ${p.paidOnDate}\n⏳ التأخير: ${p.daysLate} يوم\n💰 المبلغ المدفوع: ${p.amount} ج.م\n━━━━━━━━━━━━━━━━\n🌤️ أكاديمية سكاي (Sky Academy)`;
+    }
     window.open(`https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(msg)}`, '_blank');
   };
 
@@ -104,7 +118,7 @@ export default function LatePaymentsSection() {
           🕐 سجل الدفعات المتأخرة
         </h1>
         <p className="page-subtitle" style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
-          الطلاب اللي دفعوا مصاريف شهر معين بعد ما الشهر ده خلص — يعني دفعوا متأخرين
+          الطلاب اللي ما دفعوش مصاريف شهر سابق أو دفعوا متأخر
         </p>
       </div>
 
@@ -121,6 +135,14 @@ export default function LatePaymentsSection() {
             ))}
           </select>
         </div>
+        <div className="input-group" style={{ marginBottom: 0, minWidth: 180 }}>
+          <label className="input-label">نوع التأخر</label>
+          <select className="input" value={filterType} onChange={e => setFilterType(e.target.value as any)}>
+            <option value="all">الكل 📋</option>
+            <option value="overdue_unpaid">لم يدفعوا بعد ❌</option>
+            <option value="paid_late">دفعوا متأخرين 🕐</option>
+          </select>
+        </div>
         <div className="input-group" style={{ marginBottom: 0, flex: 2, minWidth: 200 }}>
           <label className="input-label">بحث</label>
           <input
@@ -135,15 +157,35 @@ export default function LatePaymentsSection() {
 
       {/* Summary Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
+        <div
+          className="card"
+          style={{ padding: 16, textAlign: 'center', background: filterType === 'overdue_unpaid' ? 'var(--error-muted)' : undefined, cursor: 'pointer', border: filterType === 'overdue_unpaid' ? '2px solid var(--error)' : '2px solid transparent', transition: 'border 0.2s' }}
+          onClick={() => setFilterType(v => v === 'overdue_unpaid' ? 'all' : 'overdue_unpaid')}
+          title="اضغط للفلترة على الطلاب اللي لم يدفعوا"
+        >
+          <div style={{ fontSize: 28, fontWeight: 900, color: 'var(--error)' }}>{overdueCount}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 700 }}>لم يدفعوا ❌</div>
+          <div style={{ fontSize: 10, color: 'var(--error)', marginTop: 4 }}>اضغط للفلترة</div>
+        </div>
+        <div
+          className="card"
+          style={{ padding: 16, textAlign: 'center', background: filterType === 'paid_late' ? 'var(--accent-orange-muted)' : undefined, cursor: 'pointer', border: filterType === 'paid_late' ? '2px solid var(--accent-orange)' : '2px solid transparent', transition: 'border 0.2s' }}
+          onClick={() => setFilterType(v => v === 'paid_late' ? 'all' : 'paid_late')}
+          title="اضغط للفلترة على الطلاب اللي دفعوا متأخرين"
+        >
+          <div style={{ fontSize: 28, fontWeight: 900, color: 'var(--accent-orange)' }}>{paidLateCount}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 700 }}>دفعوا متأخرين 🕐</div>
+          <div style={{ fontSize: 10, color: 'var(--accent-orange)', marginTop: 4 }}>اضغط للفلترة</div>
+        </div>
         <div className="card" style={{ padding: 16, textAlign: 'center', background: 'var(--error-muted)' }}>
           <div style={{ fontSize: 28, fontWeight: 900, color: 'var(--error)' }}>{filtered.length}</div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>إجمالي الدفعات المتأخرة</div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>إجمالي النتائج</div>
         </div>
         <div className="card" style={{ padding: 16, textAlign: 'center', background: 'var(--accent-orange-muted)' }}>
           <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--accent-orange)' }}>
             {filtered.reduce((s, p) => s + p.amount, 0).toLocaleString('ar-EG')}
           </div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>إجمالي المبالغ المتأخرة (ج.م)</div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>إجمالي المبالغ (ج.م)</div>
         </div>
         <div className="card" style={{ padding: 16, textAlign: 'center' }}>
           <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-primary)' }}>
@@ -179,11 +221,12 @@ export default function LatePaymentsSection() {
             <table>
               <thead>
                 <tr>
+                  <th>نوع التأخر</th>
                   <th>اسم الطالب</th>
                   <th>المدرس والمادة</th>
                   <th>الصف</th>
                   <th>شهر المصاريف</th>
-                  <th>دفع فعلاً إمتى</th>
+                  <th>حالة الدفع</th>
                   <th>التأخير</th>
                   <th>المبلغ</th>
                   <th>واتساب</th>
@@ -191,7 +234,21 @@ export default function LatePaymentsSection() {
               </thead>
               <tbody>
                 {filtered.map(p => (
-                  <tr key={p.paymentId}>
+                  <tr
+                    key={p.paymentId}
+                    style={{
+                      background: p.lateType === 'overdue_unpaid'
+                        ? 'rgba(239,68,68,0.04)'
+                        : undefined,
+                    }}
+                  >
+                    <td>
+                      {p.lateType === 'overdue_unpaid' ? (
+                        <span className="badge badge-danger" style={{ fontSize: 11 }}>❌ لم يدفع</span>
+                      ) : (
+                        <span className="badge badge-orange" style={{ fontSize: 11 }}>🕐 متأخر</span>
+                      )}
+                    </td>
                     <td>
                       <div style={{ fontWeight: 700 }}>{p.student.name}</div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{p.student.phone}</div>
@@ -207,13 +264,23 @@ export default function LatePaymentsSection() {
                       </span>
                     </td>
                     <td>
-                      <span style={{ fontSize: 13, color: 'var(--success)', fontWeight: 700 }}>
-                        ✅ {p.paidOnDate}
-                      </span>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>(شهر {p.paidOnMonth})</div>
+                      {p.lateType === 'overdue_unpaid' ? (
+                        <span style={{ fontSize: 13, color: 'var(--error)', fontWeight: 700 }}>
+                          ❌ لم يدفع بعد
+                        </span>
+                      ) : (
+                        <>
+                          <span style={{ fontSize: 13, color: 'var(--success)', fontWeight: 700 }}>
+                            ✅ {p.paidOnDate}
+                          </span>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>(شهر {p.paidOnMonth})</div>
+                        </>
+                      )}
                     </td>
                     <td>{badgeDays(p.daysLate)}</td>
-                    <td style={{ fontWeight: 800, color: 'var(--success)' }}>{p.amount} ج.م</td>
+                    <td style={{ fontWeight: 800, color: p.lateType === 'overdue_unpaid' ? 'var(--error)' : 'var(--success)' }}>
+                      {p.amount} ج.م
+                    </td>
                     <td>
                       <button
                         onClick={() => sendWhatsApp(p)}

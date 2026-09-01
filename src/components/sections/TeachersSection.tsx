@@ -171,7 +171,7 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
     setLoading(true);
     try {
       const [resSt, resRm] = await Promise.all([
-        fetch(`/api/teachers?type=${staffType}`),
+        fetch(`/api/teachers?type=${staffType}&t=${Date.now()}`),
         fetch('/api/rooms'),
       ]);
       if (resSt.ok) {
@@ -200,7 +200,7 @@ export default function TeachersSection({ staffType, userRole }: TeachersSection
 
   const refreshList = async () => {
     try {
-      const resSt = await fetch(`/api/teachers?type=${staffType}`);
+      const resSt = await fetch(`/api/teachers?type=${staffType}&t=${Date.now()}`);
       if (resSt.ok) {
         const d = await resSt.json();
         setStaffList(d.teachers || []);

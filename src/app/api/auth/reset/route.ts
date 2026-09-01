@@ -123,10 +123,15 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'انتهت صلاحية رمز التحقق' }, { status: 400 });
       }
       
-      targetUser.password = newPassword;
-      targetUser.resetOtp = undefined;
-      targetUser.resetOtpExpiry = undefined;
-      await targetUser.save();
+      // Use findOneAndUpdate for atomic, reliable password update
+      await User.findByIdAndUpdate(
+        targetUser._id,
+        {
+          $set: { password: newPassword },
+          $unset: { resetOtp: '', resetOtpExpiry: '' },
+        },
+        { new: true }
+      );
 
       return NextResponse.json({ success: true, message: 'تم تغيير كلمة المرور بنجاح' });
     }

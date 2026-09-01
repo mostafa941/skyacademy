@@ -65,7 +65,7 @@ export default function SettlementsSection() {
   useEffect(() => {
     const fetchTeachers = async () => {
       try {
-        const res = await fetch('/api/teachers');
+        const res = await fetch(`/api/teachers?t=${Date.now()}`);
         if (res.ok) {
           const data = await res.json();
           setTeachers(data.teachers || []);
@@ -82,7 +82,7 @@ export default function SettlementsSection() {
     setLoading(true);
     setSettlementData(null);
     try {
-      const res = await fetch(`/api/finance/settlements?teacherId=${selectedTeacher}&month=${selectedMonth}`);
+      const res = await fetch(`/api/finance/settlements?teacherId=${selectedTeacher}&month=${selectedMonth}&t=${Date.now()}`);
       const data = await res.json();
       if (res.ok) {
         setSettlementData(data.data);
