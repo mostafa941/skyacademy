@@ -271,6 +271,35 @@ export default function StudentsSection() {
     openStudentWhatsAppReport(st);
   };
 
+  const handleCopyText = (text: string, msg: string = 'تم النسخ بنجاح') => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(() => {
+        showToast(msg);
+      }).catch(() => {
+        showToast('فشل في النسخ', 'error');
+      });
+    } else {
+      showToast('النسخ غير مدعوم في هذا المتصفح', 'error');
+    }
+  };
+
+  const handleCopyAllData = () => {
+    if (!selectedStudent) return;
+    const text = `
+الاسم: ${selectedStudent.name}
+النوع: ${selectedStudent.type === 'trainee' ? 'متدرب' : 'طالب'}
+الرقم: ${selectedStudent.phone}
+رقم الوالد: ${selectedStudent.parentPhone}
+المادة/التخصص: ${selectedStudent.subjectName}
+المدرس/المدرب: ${selectedStudent.teacherName}
+الصف: ${selectedStudent.grade || 'غير محدد'}
+حالة الدفع: ${selectedStudent.paymentStatus === 'paid' ? 'تم الدفع' : selectedStudent.paymentStatus === 'partial' ? 'جزئي' : 'لم يدفع'}
+الحضور: ${selectedStudent.presentCount}
+الغياب: ${selectedStudent.absentCount}
+    `.trim();
+    handleCopyText(text, 'تم نسخ جميع بيانات الطالب بنجاح');
+  };
+
   const uniqueSubjects = Array.from(
     new Set(
       teachers
@@ -471,14 +500,25 @@ export default function StudentsSection() {
               ←
             </button>
             <div>
-              <h1 className="page-title" style={{ fontSize: 'clamp(20px, 4vw, 26px)', fontWeight: 800 }}>
+              <h1 className="page-title" style={{ fontSize: 'clamp(20px, 4vw, 26px)', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 {selectedStudent.type === 'trainee' ? '🏋️ ملف المتدرب' : '🎓 ملف الطالب'}: {selectedStudent.name}
+                <button 
+                  className="btn btn-ghost btn-sm btn-icon" 
+                  title="نسخ الاسم" 
+                  onClick={() => handleCopyText(selectedStudent.name, 'تم نسخ الاسم')}
+                  style={{ padding: 4, height: 'auto', minHeight: 'auto', fontSize: 16 }}
+                >
+                  📋
+                </button>
               </h1>
               <p className="page-subtitle" style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
                 {selectedStudent.type === 'trainee' ? `متدرب رياضي — التخصص: ${selectedStudent.subjectName}` : `${selectedStudent.grade} — مادة: ${selectedStudent.subjectName}`}
               </p>
             </div>
-            <div style={{ marginRight: 'auto', display: 'flex', gap: 8 }}>
+            <div style={{ marginRight: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn btn-secondary" onClick={handleCopyAllData}>
+                📋 نسخ البيانات
+              </button>
               <button className="btn btn-primary" onClick={() => handleSendWhatsApp(selectedStudent)} style={{ background: '#25D366', borderColor: '#25D366' }}>
                 💬 تقرير واتس
               </button>
@@ -516,8 +556,20 @@ export default function StudentsSection() {
             <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <h3 style={{ fontSize: 18, fontWeight: 700, borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>البيانات الأساسية</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div><span style={{ color: 'var(--text-muted)', fontSize: 13 }}>{selectedStudent.type === 'trainee' ? 'رقم المتدرب:' : 'رقم الطالب:'}</span> <div dir="ltr" style={{ textAlign: 'right', fontWeight: 600 }}>{selectedStudent.phone}</div></div>
-                <div><span style={{ color: 'var(--text-muted)', fontSize: 13 }}>رقم الوالد:</span> <div dir="ltr" style={{ textAlign: 'right', fontWeight: 600 }}>{selectedStudent.parentPhone}</div></div>
+                <div>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>{selectedStudent.type === 'trainee' ? 'رقم المتدرب:' : 'رقم الطالب:'}</span> 
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div dir="ltr" style={{ fontWeight: 600 }}>{selectedStudent.phone}</div>
+                    <button className="btn btn-ghost btn-sm btn-icon" onClick={() => handleCopyText(selectedStudent.phone, 'تم نسخ رقم الهاتف')} style={{ padding: 4, height: 'auto', minHeight: 'auto', fontSize: 14 }} title="نسخ الرقم">📋</button>
+                  </div>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>رقم الوالد:</span> 
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div dir="ltr" style={{ fontWeight: 600 }}>{selectedStudent.parentPhone}</div>
+                    <button className="btn btn-ghost btn-sm btn-icon" onClick={() => handleCopyText(selectedStudent.parentPhone, 'تم نسخ رقم الوالد')} style={{ padding: 4, height: 'auto', minHeight: 'auto', fontSize: 14 }} title="نسخ الرقم">📋</button>
+                  </div>
+                </div>
                 <div><span style={{ color: 'var(--text-muted)', fontSize: 13 }}>{selectedStudent.type === 'trainee' ? 'المدرب:' : 'المدرس:'}</span> <div style={{ fontWeight: 600 }}>{selectedStudent.teacherName}</div></div>
                   <div><span style={{ color: 'var(--text-muted)', fontSize: 13 }}>المصروف الافتراضي:</span> <div style={{ fontWeight: 600, color: 'var(--accent-orange)' }}>{selectedStudent.monthlyFee} ج.م</div></div>
                 </div>
